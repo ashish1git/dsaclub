@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DSA Portal - Sign Up</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="flex items-center justify-center min-h-screen py-12">
+    <canvas id="matrix-canvas"></canvas>
+    <div class="main-container w-full max-w-2xl p-6 sm:p-8 rounded-xl shadow-2xl m-4">
+        <div class="text-center mb-8">
+            <h1 class="text-2xl sm:text-3xl font-bold font-code text-blue-400">Create Your Account</h1>
+            <p class="text-gray-400 mt-2">Join the DSA Portal</p>
+        </div>
+        <form id="signup-form" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+            <!-- Form Fields -->
+            <div>
+                <label for="signup-name" class="form-label">Full Name</label>
+                <input type="text" id="signup-name" class="form-input" placeholder="Your Name" required>
+            </div>
+            <div>
+                <label for="signup-email" class="form-label">Email Address</label>
+                <input type="email" id="signup-email" class="form-input" placeholder="your.email@example.com" required>
+            </div>
+            <div>
+                <label for="signup-roll" class="form-label">Roll No</label>
+                <input type="text" id="signup-roll" class="form-input" placeholder="e.g., 25" required>
+            </div>
+            <div>
+                <label for="signup-moodle" class="form-label">Moodle ID</label>
+                <input type="text" id="signup-moodle" class="form-input" placeholder="e.g., 23106001" required>
+            </div>
+             <div>
+                <label for="signup-division" class="form-label">Division</label>
+                <select id="signup-division" class="form-input" required>
+                    <option value="A">Division A</option>
+                    <option value="B">Division B</option>
+                </select>
+            </div>
+            <div>
+                <label for="signup-batch" class="form-label">Batch</label>
+                <select id="signup-batch" class="form-input" required>
+                    <option value="Basic">Basic</option>
+                    <option value="Advanced">Advanced</option>
+                </select>
+            </div>
+            <div class="md:col-span-2">
+                <label for="signup-password" class="form-label">Password</label>
+                <input type="password" id="signup-password" class="form-input" placeholder="Minimum 6 characters" required>
+            </div>
+            <div class="md:col-span-2">
+                <button type="submit" id="signup-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300">Create Account</button>
+                <p id="signup-error" class="text-red-400 text-center mt-4 h-4"></p>
+            </div>
+        </form>
+         <div class="text-center mt-6">
+            <p class="text-gray-400">Already have an account? <a href="index.html" class="font-medium text-blue-400 hover:underline">Log In</a></p>
+        </div>
+    </div>
+    <script type="module" src="main.js"></script>
+</body>
+</html>

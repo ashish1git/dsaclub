@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="min-h-screen">
+    <canvas id="matrix-canvas"></canvas>
+    <nav class="main-container flex justify-between items-center p-4 shadow-lg sticky top-0 z-10">
+        <h1 class="text-lg sm:text-xl font-bold text-blue-300">Admin Panel</h1>
+        <button id="logout-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition text-sm sm:text-base">Logout</button>
+    </nav>
+
+    <main class="w-full max-w-7xl p-4 sm:p-8 mx-auto my-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Add Material & Manage Materials -->
+        <div class="lg:col-span-2 space-y-8">
+            <div class="main-container p-6 rounded-lg">
+                <h2 class="text-xl sm:text-2xl font-bold mb-4 text-blue-300">Add New Material</h2>
+                <form id="add-material-form">
+                    <div class="mb-4">
+                        <label for="file-name" class="form-label">File Display Name</label>
+                        <input type="text" id="file-name" class="form-input" placeholder="e.g., Lecture 1 - Big O Notation" required>
+                    </div>
+                    <div class="mb-4">
+                        <label for="file-url" class="form-label">Shareable URL (from Google Drive, etc.)</label>
+                        <input type="url" id="file-url" class="form-input" placeholder="https://docs.google.com/..." required>
+                    </div>
+                    <div class="mb-6">
+                        <label for="target-batch" class="form-label">Target Batch</label>
+                        <select id="target-batch" class="form-input" required>
+                            <option value="Basic">Basic Batch (Both Divs)</option>
+                            <option value="Advanced">Advanced Batch</option>
+                        </select>
+                    </div>
+                    <button type="submit" id="add-material-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition">Add Material</button>
+                    <p id="add-status" class="text-green-400 text-center mt-4 h-4"></p>
+                </form>
+            </div>
+            <div class="main-container p-6 rounded-lg">
+                <h2 class="text-xl sm:text-2xl font-bold mb-4 text-blue-300">Manage Materials</h2>
+                <div id="manage-materials-list" class="space-y-4">
+                    <p class="text-gray-400">Loading materials...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Manage Attendance Section -->
+        <div class="main-container p-6 rounded-lg">
+            <h2 class="text-xl sm:text-2xl font-bold mb-4 text-blue-300">Manage Attendance</h2>
+            <form id="attendance-form">
+                <div class="mb-4">
+                    <label for="student-rollno" class="form-label">Student Roll No.</label>
+                    <input type="text" id="student-rollno" class="form-input" placeholder="Enter Roll Number" required>
+                </div>
+                <!-- Field for student name confirmation -->
+                <div id="student-name-confirm" class="mb-4 h-6 text-center text-blue-300 font-semibold"></div>
+                <div class="mb-4">
+                    <label for="attendance-date" class="form-label">Date</label>
+                    <input type="date" id="attendance-date" class="form-input" required>
+                </div>
+                <div class="mb-6">
+                    <label for="attendance-status" class="form-label">Status</label>
+                    <select id="attendance-status" class="form-input" required>
+                        <option value="Present">Present</option>
+                        <option value="Absent">Absent</option>
+                    </select>
+                </div>
+                <button type="submit" id="mark-attendance-button" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition">Mark Attendance</button>
+                <p id="attendance-status-msg" class="text-green-400 text-center mt-4 h-4"></p>
+            </form>
+
+            <!-- Section for attendance history -->
+            <div class="border-t border-gray-700 mt-8 pt-6">
+                <h3 class="text-lg font-bold text-center mb-4 text-blue-300">Recent History</h3>
+                <div id="attendance-history" class="space-y-2 text-gray-300 h-48 overflow-y-auto pr-2">
+                    <p class="text-gray-400 text-center">No recent records.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
