@@ -96,3 +96,21 @@ body {
 .empty-cell {
     color: transparent;
 }
+
+/* NEW: Enhanced Tab Styles */
+.tab-btn {
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    color: #9ca3af; /* gray-400 */
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease-in-out;
+}
+.tab-btn:hover {
+    background-color: rgba(27, 86, 182, 0.3); /* A subtle hover effect */
+    color: #e5e7eb; /* gray-200 */
+}
+.tab-btn.active-tab {
+    color: #5a82d2; /* gray-200 */
+    background-color: rgba(15, 11, 9, 0.5); /* A slightly darker background for the active tab */
+    border-bottom-color: #c8a13f; /* The blue underline */
+}
