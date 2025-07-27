@@ -688,7 +688,6 @@ function initQrCodeGeneration(db) {
     const qrTimerEl = document.getElementById('qr-timer');
     let timerInterval;
 
-    // FIX: Added a fallback for crypto.randomUUID
     const generateUUID = () => {
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
             var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
@@ -748,13 +747,20 @@ function initQrScanner(uid, db) {
     const html5QrCode = new Html5Qrcode("qr-reader");
 
     const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
-        html5QrCode.stop();
+        html5QrCode.stop().catch(err => console.error("Failed to stop QR scanner:", err));
+        
         scanStatusEl.textContent = "Processing...";
         scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-yellow-400';
 
         try {
             const token = decodedText;
             const today = new Date().toISOString().split('T')[0];
+
+            const existingAttendanceRef = doc(db, `users/${uid}/attendance`, today);
+            const existingAttendanceSnap = await getDoc(existingAttendanceRef);
+            if (existingAttendanceSnap.exists()) {
+                throw new Error("Attendance already marked for today.");
+            }
 
             const sessionRef = doc(db, "attendance_sessions", token);
             const sessionSnap = await getDoc(sessionRef);
@@ -784,6 +790,7 @@ function initQrScanner(uid, db) {
 
             scanStatusEl.textContent = "Success! Attendance marked.";
             scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-green-400';
+            playBeep();
 
         } catch (error) {
             console.error("Attendance marking failed:", error);
@@ -795,13 +802,28 @@ function initQrScanner(uid, db) {
     const config = { fps: 10, qrbox: { width: 250, height: 250 } };
     html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback)
         .catch(err => {
-            scanStatusEl.textContent = "Could not start camera.";
+            console.error("Could not start camera:", err);
+            scanStatusEl.textContent = "Could not start camera. Please allow permission.";
             scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-red-400';
         });
 }
 
 
 // --- Other functions ---
+function playBeep() {
+    const context = new (window.AudioContext || window.webkitAudioContext)();
+    if (!context) return;
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(context.destination);
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(880, context.currentTime);
+    gainNode.gain.setValueAtTime(0.5, context.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.5);
+    oscillator.start(context.currentTime);
+    oscillator.stop(context.currentTime + 0.5);
+}
 function formatDateDDMMYYYY(dateString) {
     const [year, month, day] = dateString.split('-');
     return `${day}${month}${year}`;
