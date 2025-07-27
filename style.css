@@ -7,110 +7,86 @@ body {
 }
 
 #matrix-canvas {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: -1;
-    opacity: 0.4;
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.4;
 }
 
-.font-code { 
-    font-family: 'Fira Code', monospace;
-}
+.font-code { font-family: 'Fira Code', monospace; }
 
 /* Main Container Styles */
 .main-container {
     background-color: rgba(17, 24, 39, 0.85);
     backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px); /* For Safari */
+    -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(55, 65, 81, 0.5);
 }
 
 /* Form Input Styles */
 .form-label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: #d1d5db;
+    display: block; margin-bottom: 0.5rem; font-size: 0.875rem; font-weight: 500; color: #d1d5db;
 }
-
 .form-input {
-    background-color: #1f2937;
-    border: 1px solid #4b5563;
-    color: #e5e7eb;
-    transition: all 0.3s ease;
-    width: 100%;
-    padding: 0.75rem;
-    border-radius: 0.5rem;
+    background-color: #1f2937; border: 1px solid #4b5563; color: #e5e7eb;
+    transition: all 0.3s ease; width: 100%; padding: 0.75rem; border-radius: 0.5rem;
 }
-
 .form-input:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
+    outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
 }
 
 /* Loading Animation for Buttons */
 .btn-loading {
-    position: relative;
-    color: transparent !important;
-    pointer-events: none;
+    position: relative; color: transparent !important; pointer-events: none;
 }
-
 .btn-loading::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    margin-left: -12px;
-    margin-top: -12px;
-    width: 24px;
-    height: 24px;
-    border: 2px solid #fff;
-    border-top-color: transparent;
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
+    content: ''; position: absolute; left: 50%; top: 50%;
+    margin-left: -12px; margin-top: -12px; width: 24px; height: 24px;
+    border: 2px solid #fff; border-top-color: transparent;
+    border-radius: 50%; animation: spin 0.6s linear infinite;
 }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-/* Calendar Styles */
-.day-name {
-    font-weight: bold;
-    color: #9ca3af; /* gray-400 */
-}
-.day-cell {
-    color: #d1d5db; /* gray-300 */
-}
-.thursday {
-    background-color: #10b981; /* green-500 */
-    color: white;
-    border-radius: 50%;
-    font-weight: bold;
-}
-.empty-cell {
-    color: transparent;
-}
-
-/* NEW: Enhanced Tab Styles */
+/* Enhanced Tab Styles */
 .tab-btn {
-    padding: 0.75rem 1.5rem;
-    font-weight: 600;
-    color: #9ca3af; /* gray-400 */
-    border-bottom: 3px solid transparent;
-    transition: all 0.3s ease-in-out;
+    padding: 0.75rem 1.5rem; font-weight: 600; color: #9ca3af;
+    border-bottom: 3px solid transparent; transition: all 0.3s ease-in-out;
 }
 .tab-btn:hover {
-    background-color: rgba(27, 86, 182, 0.3); /* A subtle hover effect */
-    color: #e5e7eb; /* gray-200 */
+    background-color: rgba(152, 173, 207, 0.3); color: #e5e7eb;
 }
 .tab-btn.active-tab {
-    color: #5a82d2; /* gray-200 */
-    background-color: rgba(15, 11, 9, 0.5); /* A slightly darker background for the active tab */
-    border-bottom-color: #c8a13f; /* The blue underline */
+    color: #7e93bc; background-color: rgba(37, 39, 33, 0.5);
+    border-bottom-color: #1070e5;
+}
+.tab-content {
+    animation: fadeIn 0.5s ease-in-out;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Attendance & User List Styles */
+.attendance-history-list, #manage-materials-list, #user-list {
+    background-color: rgba(31, 41, 55, 0.5);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    height: 24rem;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+}
+
+/* Custom Scrollbar Styles */
+.attendance-history-list::-webkit-scrollbar, #manage-materials-list::-webkit-scrollbar, #user-list::-webkit-scrollbar {
+    width: 8px;
+}
+.attendance-history-list::-webkit-scrollbar-track, #manage-materials-list::-webkit-scrollbar-track, #user-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+.attendance-history-list::-webkit-scrollbar-thumb, #manage-materials-list::-webkit-scrollbar-thumb, #user-list::-webkit-scrollbar-thumb {
+    background-color: #4b5563;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+.attendance-history-list::-webkit-scrollbar-thumb:hover, #manage-materials-list::-webkit-scrollbar-thumb:hover, #user-list::-webkit-scrollbar-thumb:hover {
+    background-color: #6b7280;
 }

@@ -49,7 +49,7 @@ try {
 // --- MAIN INITIALIZATION LOGIC ---
 window.addEventListener('load', () => {
     setupMatrixAnimation();
-    setupAdminTabs(); // Set up UI listeners once the page loads.
+    setupAdminTabs();
     
     onAuthStateChanged(auth, async (user) => {
         const currentPage = window.location.pathname.split("/").pop();
@@ -247,7 +247,7 @@ function initContentManagement(db) {
     loadAdminMaterials(db);
 }
 
-// --- ADMIN: ATTENDANCE MANAGEMENT ---
+// --- ADMIN: ATTENDANCE MANAGEMENT (with Delete) ---
 function initAttendanceManagement(db) {
     const attendanceForm = document.getElementById('attendance-form');
     if (!attendanceForm) return;
@@ -257,7 +257,12 @@ function initAttendanceManagement(db) {
     const statusSelect = document.getElementById('attendance-status');
     const nameConfirmEl = document.getElementById('student-name-confirm');
     const attendanceButton = document.getElementById('mark-attendance-button');
+    const deleteAttendanceButton = document.getElementById('delete-attendance-button');
     const historyDatePicker = document.getElementById('history-date-picker');
+    const exportAttendanceBtn = document.getElementById('export-attendance-btn');
+    const importAttendanceBtn = document.getElementById('import-attendance-btn');
+    const importAttendanceInput = document.getElementById('import-attendance-input');
+    const importAttendanceStatusEl = document.getElementById('import-attendance-status');
 
     const today = new Date().toISOString().split('T')[0];
     dateInput.value = today;
@@ -270,6 +275,7 @@ function initAttendanceManagement(db) {
         nameConfirmEl.classList.remove('text-red-400');
         attendanceButton.textContent = 'Mark Attendance';
         statusSelect.value = 'Present';
+        deleteAttendanceButton.classList.add('hidden'); // Hide delete button by default
 
         if (!rollNo) return;
 
@@ -294,6 +300,7 @@ function initAttendanceManagement(db) {
             if (attendanceSnap.exists()) {
                 statusSelect.value = attendanceSnap.data().status;
                 attendanceButton.textContent = 'Update Attendance';
+                deleteAttendanceButton.classList.remove('hidden'); // Show delete button
             }
 
         } catch (error) {
@@ -304,12 +311,62 @@ function initAttendanceManagement(db) {
     };
 
     rollNoInput.addEventListener('blur', fetchExistingAttendance);
-    dateInput.addEventListener('change', fetchExistingAttendance);
+    dateInput.addEventListener('change', () => {
+        fetchExistingAttendance();
+        loadSegregatedAttendanceHistory(db, dateInput.value);
+    });
     if(historyDatePicker) {
         historyDatePicker.addEventListener('change', () => {
             loadSegregatedAttendanceHistory(db, historyDatePicker.value);
         });
     }
+
+    deleteAttendanceButton.addEventListener('click', async () => {
+        const rollNo = rollNoInput.value.trim();
+        const date = dateInput.value;
+        if (!rollNo || !date) {
+            alert("Please provide a roll number and date to delete.");
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete the attendance record for roll no. ${rollNo} on ${date}?`)) {
+            return;
+        }
+
+        const statusEl = document.getElementById('attendance-status-msg');
+        statusEl.textContent = 'Deleting...';
+
+        try {
+            const q = query(collection(db, "users"), where("rollNo", "==", rollNo));
+            const userSnapshot = await getDocs(q);
+            if (userSnapshot.empty) throw new Error("Student not found.");
+
+            const studentId = userSnapshot.docs[0].id;
+
+            // Delete from student's subcollection
+            await deleteDoc(doc(db, `users/${studentId}/attendance`, date));
+
+            // Delete from central logs
+            const logQuery = query(collection(db, "attendance_logs"), where("studentId", "==", studentId), where("date", "==", date));
+            const logSnapshot = await getDocs(logQuery);
+            if (!logSnapshot.empty) {
+                await deleteDoc(logSnapshot.docs[0].ref);
+            }
+
+            statusEl.textContent = 'Record deleted successfully!';
+            attendanceForm.reset();
+            nameConfirmEl.textContent = '';
+            dateInput.value = today;
+            deleteAttendanceButton.classList.add('hidden');
+            loadSegregatedAttendanceHistory(db, historyDatePicker.value);
+
+        } catch (error) {
+            console.error("Deletion failed:", error);
+            statusEl.textContent = "Deletion failed.";
+        } finally {
+            setTimeout(() => statusEl.textContent = '', 3000);
+        }
+    });
 
     attendanceForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -356,13 +413,209 @@ function initAttendanceManagement(db) {
         }
     });
 
+    exportAttendanceBtn.addEventListener('click', async () => {
+        const originalText = exportAttendanceBtn.textContent;
+        exportAttendanceBtn.textContent = 'Exporting...';
+        exportAttendanceBtn.disabled = true;
+
+        try {
+            const usersSnapshot = await getDocs(collection(db, "users"));
+            const usersMap = new Map();
+            usersSnapshot.forEach(doc => {
+                usersMap.set(doc.id, doc.data());
+            });
+
+            const attendanceQuery = query(collection(db, "attendance_logs"), orderBy("date", "desc"));
+            const attendanceSnapshot = await getDocs(attendanceQuery);
+
+            if (attendanceSnapshot.empty) {
+                alert(`No attendance records found to export.`);
+                return;
+            }
+
+            const attendanceData = [];
+            attendanceSnapshot.forEach(logDoc => {
+                const record = logDoc.data();
+                const userData = usersMap.get(record.studentId);
+                if (userData) {
+                    attendanceData.push({
+                        rollNo: record.rollNo,
+                        name: record.studentName,
+                        date: record.date,
+                        status: record.status,
+                        division: userData.division,
+                        batch: userData.batch
+                    });
+                }
+            });
+            
+            attendanceData.sort((a, b) => {
+                if (a.date < b.date) return 1;
+                if (a.date > b.date) return -1;
+                return a.name.localeCompare(b.name);
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(attendanceData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, `Full Attendance History`);
+            XLSX.writeFile(workbook, `full_attendance_export.xlsx`);
+
+        } catch (error) {
+            console.error("Export failed:", error);
+            alert("Failed to export attendance.");
+        } finally {
+            exportAttendanceBtn.textContent = originalText;
+            exportAttendanceBtn.disabled = false;
+        }
+    });
+    
+    importAttendanceBtn.addEventListener('click', () => importAttendanceInput.click());
+    importAttendanceInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                importAttendanceStatusEl.textContent = "Importing... Please wait.";
+                importAttendanceStatusEl.classList.remove('text-red-400');
+                importAttendanceStatusEl.classList.add('text-green-400');
+
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const recordsToImport = XLSX.utils.sheet_to_json(worksheet);
+
+                let successCount = 0;
+                let failCount = 0;
+
+                for (const record of recordsToImport) {
+                    try {
+                        const { rollNo, date, status } = record;
+                        if (!rollNo || !date || !status) {
+                            throw new Error("Missing required fields (rollNo, date, status)");
+                        }
+                        
+                        const q = query(collection(db, "users"), where("rollNo", "==", String(rollNo)));
+                        const userSnapshot = await getDocs(q);
+                        if (userSnapshot.empty) throw new Error(`User with rollNo ${rollNo} not found.`);
+                        
+                        const studentDoc = userSnapshot.docs[0];
+                        const studentId = studentDoc.id;
+                        const studentName = studentDoc.data().name;
+
+                        const attendanceRef = doc(db, `users/${studentId}/attendance`, date);
+                        await setDoc(attendanceRef, { status, date });
+
+                        const logQuery = query(collection(db, "attendance_logs"), where("studentId", "==", studentId), where("date", "==", date));
+                        const logSnapshot = await getDocs(logQuery);
+
+                        if (logSnapshot.empty) {
+                            await addDoc(collection(db, "attendance_logs"), { studentId, studentName, rollNo, date, status, markedAt: new Date() });
+                        } else {
+                            await updateDoc(logSnapshot.docs[0].ref, { status, markedAt: new Date() });
+                        }
+                        successCount++;
+                    } catch (error) {
+                        console.warn(`Could not import record for rollNo ${record.rollNo}:`, error.message);
+                        failCount++;
+                    }
+                }
+                importAttendanceStatusEl.textContent = `Import complete. Success: ${successCount}, Failed: ${failCount}`;
+                loadSegregatedAttendanceHistory(db, historyDatePicker.value);
+            } catch (error) {
+                console.error("Import failed:", error);
+                importAttendanceStatusEl.textContent = "Import failed. Check file format.";
+                importAttendanceStatusEl.classList.add('text-red-400');
+            } finally {
+                importAttendanceInput.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    });
+    
     loadSegregatedAttendanceHistory(db, today);
 }
 
 // --- ADMIN: USER MANAGEMENT ---
 function initUserManagement(db) {
     const userListEl = document.getElementById('user-list');
+    const exportBtn = document.getElementById('export-users-btn');
+    const importBtn = document.getElementById('import-users-btn');
+    const importFileInput = document.getElementById('import-users-input');
+    const importStatusEl = document.getElementById('import-users-status');
     if (!userListEl) return;
+
+    // EXPORT LOGIC
+    exportBtn.addEventListener('click', async () => {
+        try {
+            const usersQuery = query(collection(db, "users"), where("role", "==", "student"));
+            const usersSnapshot = await getDocs(usersQuery);
+            const usersData = usersSnapshot.docs.map(doc => doc.data());
+
+            const worksheet = XLSX.utils.json_to_sheet(usersData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Students");
+            XLSX.writeFile(workbook, "students_export.xlsx");
+        } catch (error) {
+            console.error("Export failed:", error);
+            alert("Failed to export users.");
+        }
+    });
+
+    // IMPORT LOGIC
+    importBtn.addEventListener('click', () => importFileInput.click());
+    importFileInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                importStatusEl.textContent = "Importing... Please wait.";
+                importStatusEl.classList.remove('text-red-400');
+                importStatusEl.classList.add('text-green-400');
+
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const usersToImport = XLSX.utils.sheet_to_json(worksheet);
+
+                let successCount = 0;
+                let failCount = 0;
+
+                for (const user of usersToImport) {
+                    try {
+                        const userCredential = await createUserWithEmailAndPassword(auth, user.email, 'password123');
+                        const newUid = userCredential.user.uid;
+                        
+                        await setDoc(doc(db, "users", newUid), {
+                            name: user.name,
+                            email: user.email,
+                            rollNo: String(user.rollNo),
+                            moodleId: String(user.moodleId),
+                            division: user.division,
+                            batch: user.batch,
+                            role: 'student'
+                        });
+                        successCount++;
+                    } catch (error) {
+                        console.warn(`Could not import user ${user.email}:`, error.message);
+                        failCount++;
+                    }
+                }
+                importStatusEl.textContent = `Import complete. Success: ${successCount}, Failed: ${failCount}`;
+                loadUsers();
+            } catch (error) {
+                console.error("Import failed:", error);
+                importStatusEl.textContent = "Import failed. Check file format.";
+                importStatusEl.classList.add('text-red-400');
+            } finally {
+                importFileInput.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    });
 
     const loadUsers = async () => {
         userListEl.innerHTML = '<p class="text-gray-400">Loading users...</p>';
@@ -376,7 +629,7 @@ function initUserManagement(db) {
             userListEl.innerHTML = '';
             usersSnapshot.forEach(doc => {
                 const user = doc.data();
-                if (user.role === 'admin') return; // Don't show admin in the list
+                if (user.role === 'admin') return;
 
                 const userEl = document.createElement('div');
                 userEl.className = 'bg-gray-800 p-3 rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4';
@@ -391,7 +644,6 @@ function initUserManagement(db) {
                 userListEl.appendChild(userEl);
             });
 
-            // Add event listeners to the new delete buttons
             document.querySelectorAll('.delete-user-btn').forEach(button => {
                 button.addEventListener('click', async (e) => {
                     const userIdToDelete = e.target.dataset.uid;
@@ -404,7 +656,7 @@ function initUserManagement(db) {
                         try {
                             await deleteDoc(doc(db, "users", userIdToDelete));
                             alert('User data deleted from database.');
-                            loadUsers(); // Refresh the list
+                            loadUsers();
                         } catch (error) {
                             console.error("Error deleting user data:", error);
                             alert("Failed to delete user data.");
@@ -443,7 +695,9 @@ async function loadSegregatedAttendanceHistory(db, date) {
 
     if (snapshot.empty) return;
     
-    let hasRecords = { A: false, B: false, Advanced: false };
+    let recordsA = [];
+    let recordsB = [];
+    let recordsAdvanced = [];
 
     for (const logDoc of snapshot.docs) {
         const record = logDoc.data();
@@ -451,32 +705,46 @@ async function loadSegregatedAttendanceHistory(db, date) {
         if (!userDoc.exists()) continue;
 
         const userData = userDoc.data();
-        const recordEl = document.createElement('div');
-        recordEl.className = 'bg-gray-800 p-2 rounded text-sm mb-2';
-        const statusColor = record.status === 'Present' ? 'text-green-400' : 'text-red-400';
-        
-        const formattedDate = formatDateDDMMYYYY(record.date);
-
-        recordEl.innerHTML = `
-            <div class="flex justify-between items-center">
-                <span class="font-bold">${record.studentName}</span>
-                <span class="font-bold ${statusColor}">${record.status}</span>
-            </div>
-            <div class="text-xs text-gray-400">Roll: ${record.rollNo}</div>
-            <div class="text-xs text-gray-500 text-right">${formattedDate}</div>
-        `;
+        const recordWithUserData = { ...record, ...userData };
 
         if (userData.batch === 'Advanced') {
-            if (!hasRecords.Advanced) { historyContainerAdvanced.innerHTML = ''; hasRecords.Advanced = true; }
-            historyContainerAdvanced.appendChild(recordEl);
+            recordsAdvanced.push(recordWithUserData);
         } else if (userData.division === 'A') {
-            if (!hasRecords.A) { historyContainerA.innerHTML = ''; hasRecords.A = true; }
-            historyContainerA.appendChild(recordEl);
+            recordsA.push(recordWithUserData);
         } else if (userData.division === 'B') {
-            if (!hasRecords.B) { historyContainerB.innerHTML = ''; hasRecords.B = true; }
-            historyContainerB.appendChild(recordEl);
+            recordsB.push(recordWithUserData);
         }
     }
+
+    // Sort each list alphabetically by name
+    recordsA.sort((a, b) => a.name.localeCompare(b.name));
+    recordsB.sort((a, b) => a.name.localeCompare(b.name));
+    recordsAdvanced.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Function to render a sorted list
+    const renderList = (container, records) => {
+        if (records.length === 0) return;
+        container.innerHTML = '';
+        records.forEach((record, index) => {
+            const recordEl = document.createElement('div');
+            recordEl.className = 'bg-gray-800 p-2 rounded text-sm mb-2';
+            const statusColor = record.status === 'Present' ? 'text-green-400' : 'text-red-400';
+            const formattedDate = formatDateDDMMYYYY(record.date);
+            recordEl.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <span class="font-bold">${index + 1}. ${record.studentName}</span>
+                    <span class="font-bold ${statusColor}">${record.status}</span>
+                </div>
+                <div class="text-xs text-gray-400">Roll: ${record.rollNo}</div>
+                <div class="text-xs text-gray-500 text-right">${formattedDate}</div>
+            `;
+            container.appendChild(recordEl);
+        });
+    };
+
+    renderList(historyContainerA, recordsA);
+    renderList(historyContainerB, recordsB);
+    renderList(historyContainerAdvanced, recordsAdvanced);
 }
 async function loadStudentAttendance(uid, db) {
     const attendanceRecordEl = document.getElementById('attendance-record');
