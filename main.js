@@ -779,20 +779,12 @@ function initQrScanner(uid, db) {
             const { name, rollNo } = userDoc.data();
             
             // Mark attendance in the student's personal record
-            const attendanceRef = doc(db, `users/${uid}/attendance`, today);
-            await setDoc(attendanceRef, { status: "Present", date: today });
+            await setDoc(doc(db, `users/${uid}/attendance`, today), { status: "Present", date: today });
 
             // Now, also create the central log for the admin panel
-            const logQuery = query(collection(db, "attendance_logs"), where("studentId", "==", uid), where("date", "==", today));
-            const logSnapshot = await getDocs(logQuery);
-
-            if (logSnapshot.empty) {
-                await addDoc(collection(db, "attendance_logs"), {
-                    studentId: uid, studentName: name, rollNo, date: today, status: "Present", markedAt: new Date()
-                });
-            } else {
-                await updateDoc(logSnapshot.docs[0].ref, { status: "Present", markedAt: new Date() });
-            }
+            await addDoc(collection(db, "attendance_logs"), {
+                studentId: uid, studentName: name, rollNo, date: today, status: "Present", markedAt: new Date()
+            });
 
             scanStatusEl.textContent = "Success! Attendance marked.";
             scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-green-400';
