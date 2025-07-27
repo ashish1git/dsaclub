@@ -21,7 +21,8 @@ import {
     orderBy,
     limit,
     updateDoc,
-    serverTimestamp
+    serverTimestamp,
+    onSnapshot
 } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
 // Your specific Firebase configuration is now included.
@@ -270,6 +271,8 @@ function initAttendanceManagement(db) {
     const today = new Date().toISOString().split('T')[0];
     dateInput.value = today;
     if (historyDatePicker) historyDatePicker.value = today;
+    
+    let unsubscribeFromHistory; // To manage the live listener
 
     const fetchExistingAttendance = async () => {
         const rollNo = rollNoInput.value.trim();
@@ -314,13 +317,11 @@ function initAttendanceManagement(db) {
     };
 
     rollNoInput.addEventListener('blur', fetchExistingAttendance);
-    dateInput.addEventListener('change', () => {
-        fetchExistingAttendance();
-        loadSegregatedAttendanceHistory(db, dateInput.value);
-    });
+    dateInput.addEventListener('change', fetchExistingAttendance);
     if(historyDatePicker) {
         historyDatePicker.addEventListener('change', () => {
-            loadSegregatedAttendanceHistory(db, historyDatePicker.value);
+            if (unsubscribeFromHistory) unsubscribeFromHistory();
+            unsubscribeFromHistory = loadSegregatedAttendanceHistory(db, historyDatePicker.value);
         });
     }
 
@@ -361,7 +362,7 @@ function initAttendanceManagement(db) {
             nameConfirmEl.textContent = '';
             dateInput.value = today;
             deleteAttendanceButton.classList.add('hidden');
-            loadSegregatedAttendanceHistory(db, historyDatePicker.value);
+            // No need to call load history again, the live listener will handle it.
 
         } catch (error) {
             console.error("Deletion failed:", error);
@@ -406,8 +407,11 @@ function initAttendanceManagement(db) {
             }
             
             statusEl.textContent = 'Attendance saved!';
-            if (historyDatePicker) historyDatePicker.value = date;
-            loadSegregatedAttendanceHistory(db, date);
+            if (historyDatePicker.value !== date) {
+                historyDatePicker.value = date;
+                if (unsubscribeFromHistory) unsubscribeFromHistory();
+                unsubscribeFromHistory = loadSegregatedAttendanceHistory(db, date);
+            }
         } catch (error) {
             statusEl.textContent = error.message;
         } finally {
@@ -525,7 +529,7 @@ function initAttendanceManagement(db) {
                     }
                 }
                 importAttendanceStatusEl.textContent = `Import complete. Success: ${successCount}, Failed: ${failCount}`;
-                loadSegregatedAttendanceHistory(db, historyDatePicker.value);
+                // The live listener will automatically refresh the view.
             } catch (error) {
                 console.error("Import failed:", error);
                 importAttendanceStatusEl.textContent = "Import failed. Check file format.";
@@ -537,7 +541,7 @@ function initAttendanceManagement(db) {
         reader.readAsArrayBuffer(file);
     });
     
-    loadSegregatedAttendanceHistory(db, today);
+    unsubscribeFromHistory = loadSegregatedAttendanceHistory(db, today);
 }
 
 // --- ADMIN: USER MANAGEMENT ---
@@ -787,7 +791,6 @@ function initQrScanner(uid, db) {
                     studentId: uid, studentName: name, rollNo, date: today, status: "Present", markedAt: new Date()
                 });
             } else {
-                // This case is unlikely with the check above, but safe to have
                 await updateDoc(logSnapshot.docs[0].ref, { status: "Present", markedAt: new Date() });
             }
 
@@ -831,7 +834,7 @@ function formatDateDDMMYYYY(dateString) {
     const [year, month, day] = dateString.split('-');
     return `${day}${month}${year}`;
 }
-async function loadSegregatedAttendanceHistory(db, date) {
+function loadSegregatedAttendanceHistory(db, date) {
     const historyContainerA = document.getElementById('attendance-history-A');
     const historyContainerB = document.getElementById('attendance-history-B');
     const historyContainerAdvanced = document.getElementById('attendance-history-Advanced');
@@ -841,67 +844,69 @@ async function loadSegregatedAttendanceHistory(db, date) {
         if(c) c.innerHTML = '<p class="text-gray-500 text-sm text-center">Loading records...</p>';
     });
 
-    const usersSnapshot = await getDocs(collection(db, "users"));
-    const usersMap = new Map();
-    usersSnapshot.forEach(doc => {
-        usersMap.set(doc.id, doc.data());
-    });
-
     const q = query(collection(db, "attendance_logs"), where("date", "==", date));
-    const snapshot = await getDocs(q);
-
-    containers.forEach(c => {
-        if(c) c.innerHTML = '<p class="text-gray-500 text-sm text-center">No records for this date.</p>';
-    });
-
-    if (snapshot.empty) return;
     
-    let recordsA = [];
-    let recordsB = [];
-    let recordsAdvanced = [];
-
-    snapshot.forEach(logDoc => {
-        const record = logDoc.data();
-        const userData = usersMap.get(record.studentId);
-        if (userData) {
-            const recordWithUserData = { ...record, ...userData };
-            if (userData.batch === 'Advanced') {
-                recordsAdvanced.push(recordWithUserData);
-            } else if (userData.division === 'A') {
-                recordsA.push(recordWithUserData);
-            } else if (userData.division === 'B') {
-                recordsB.push(recordWithUserData);
-            }
-        }
-    });
-
-    recordsA.sort((a, b) => a.name.localeCompare(b.name));
-    recordsB.sort((a, b) => a.name.localeCompare(b.name));
-    recordsAdvanced.sort((a, b) => a.name.localeCompare(b.name));
-
-    const renderList = (container, records) => {
-        if (records.length === 0) return;
-        container.innerHTML = '';
-        records.forEach((record, index) => {
-            const recordEl = document.createElement('div');
-            recordEl.className = 'bg-gray-800 p-2 rounded text-sm mb-2';
-            const statusColor = record.status === 'Present' ? 'text-green-400' : 'text-red-400';
-            const formattedDate = formatDateDDMMYYYY(record.date);
-            recordEl.innerHTML = `
-                <div class="flex justify-between items-center">
-                    <span class="font-bold">${index + 1}. ${record.studentName}</span>
-                    <span class="font-bold ${statusColor}">${record.status}</span>
-                </div>
-                <div class="text-xs text-gray-400">Roll: ${record.rollNo}</div>
-                <div class="text-xs text-gray-500 text-right">${formattedDate}</div>
-            `;
-            container.appendChild(recordEl);
+    // Return the unsubscribe function to be managed
+    return onSnapshot(q, async (snapshot) => {
+        containers.forEach(c => {
+            if(c) c.innerHTML = '<p class="text-gray-500 text-sm text-center">No records for this date.</p>';
         });
-    };
 
-    renderList(historyContainerA, recordsA);
-    renderList(historyContainerB, recordsB);
-    renderList(historyContainerAdvanced, recordsAdvanced);
+        if (snapshot.empty) return;
+        
+        const usersSnapshot = await getDocs(collection(db, "users"));
+        const usersMap = new Map();
+        usersSnapshot.forEach(doc => {
+            usersMap.set(doc.id, doc.data());
+        });
+
+        let recordsA = [];
+        let recordsB = [];
+        let recordsAdvanced = [];
+
+        snapshot.forEach(logDoc => {
+            const record = logDoc.data();
+            const userData = usersMap.get(record.studentId);
+            if (userData) {
+                const recordWithUserData = { ...record, ...userData };
+                if (userData.batch === 'Advanced') {
+                    recordsAdvanced.push(recordWithUserData);
+                } else if (userData.division === 'A') {
+                    recordsA.push(recordWithUserData);
+                } else if (userData.division === 'B') {
+                    recordsB.push(recordWithUserData);
+                }
+            }
+        });
+
+        recordsA.sort((a, b) => a.name.localeCompare(b.name));
+        recordsB.sort((a, b) => a.name.localeCompare(b.name));
+        recordsAdvanced.sort((a, b) => a.name.localeCompare(b.name));
+
+        const renderList = (container, records) => {
+            if (records.length === 0) return;
+            container.innerHTML = '';
+            records.forEach((record, index) => {
+                const recordEl = document.createElement('div');
+                recordEl.className = 'bg-gray-800 p-2 rounded text-sm mb-2';
+                const statusColor = record.status === 'Present' ? 'text-green-400' : 'text-red-400';
+                const formattedDate = formatDateDDMMYYYY(record.date);
+                recordEl.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold">${index + 1}. ${record.studentName}</span>
+                        <span class="font-bold ${statusColor}">${record.status}</span>
+                    </div>
+                    <div class="text-xs text-gray-400">Roll: ${record.rollNo}</div>
+                    <div class="text-xs text-gray-500 text-right">${formattedDate}</div>
+                `;
+                container.appendChild(recordEl);
+            });
+        };
+
+        renderList(historyContainerA, recordsA);
+        renderList(historyContainerB, recordsB);
+        renderList(historyContainerAdvanced, recordsAdvanced);
+    });
 }
 async function loadStudentAttendance(uid, db) {
     const attendanceRecordEl = document.getElementById('attendance-record');
