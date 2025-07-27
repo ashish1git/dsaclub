@@ -687,11 +687,23 @@ async function loadSegregatedAttendanceHistory(db, date) {
 
     const containers = [historyContainerA, historyContainerB, historyContainerAdvanced];
     containers.forEach(c => {
-        if(c) c.innerHTML = '<p class="text-gray-500 text-sm text-center">No records for this date.</p>';
+        if(c) c.innerHTML = '<p class="text-gray-500 text-sm text-center">Loading records...</p>';
+    });
+
+    // OPTIMIZED LOGIC: Fetch all users ONCE.
+    const usersSnapshot = await getDocs(collection(db, "users"));
+    const usersMap = new Map();
+    usersSnapshot.forEach(doc => {
+        usersMap.set(doc.id, doc.data());
     });
 
     const q = query(collection(db, "attendance_logs"), where("date", "==", date));
     const snapshot = await getDocs(q);
+
+    // Reset containers after fetching, before rendering.
+    containers.forEach(c => {
+        if(c) c.innerHTML = '<p class="text-gray-500 text-sm text-center">No records for this date.</p>';
+    });
 
     if (snapshot.empty) return;
     
@@ -699,22 +711,20 @@ async function loadSegregatedAttendanceHistory(db, date) {
     let recordsB = [];
     let recordsAdvanced = [];
 
-    for (const logDoc of snapshot.docs) {
+    snapshot.forEach(logDoc => {
         const record = logDoc.data();
-        const userDoc = await getDoc(doc(db, "users", record.studentId));
-        if (!userDoc.exists()) continue;
-
-        const userData = userDoc.data();
-        const recordWithUserData = { ...record, ...userData };
-
-        if (userData.batch === 'Advanced') {
-            recordsAdvanced.push(recordWithUserData);
-        } else if (userData.division === 'A') {
-            recordsA.push(recordWithUserData);
-        } else if (userData.division === 'B') {
-            recordsB.push(recordWithUserData);
+        const userData = usersMap.get(record.studentId);
+        if (userData) {
+            const recordWithUserData = { ...record, ...userData };
+            if (userData.batch === 'Advanced') {
+                recordsAdvanced.push(recordWithUserData);
+            } else if (userData.division === 'A') {
+                recordsA.push(recordWithUserData);
+            } else if (userData.division === 'B') {
+                recordsB.push(recordWithUserData);
+            }
         }
-    }
+    });
 
     // Sort each list alphabetically by name
     recordsA.sort((a, b) => a.name.localeCompare(b.name));
