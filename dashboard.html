@@ -15,46 +15,31 @@
         <button id="logout-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition text-sm sm:text-base">Logout</button>
     </nav>
     
-    <main class="w-full max-w-7xl p-4 sm:p-8 mx-auto my-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <!-- Main Content: Welcome and Materials -->
-        <div class="main-container lg:col-span-2 p-6 rounded-xl shadow-2xl">
-            <div id="welcome-message" class="text-center mb-8">
-                <!-- Welcome message will be injected here by JS -->
-            </div>
-            
-            <div class="border-t border-gray-700 pt-6">
+    <main class="w-full max-w-7xl p-4 sm:p-8 mx-auto my-8">
+        <div class="main-container p-6 rounded-xl shadow-2xl mb-8">
+            <div id="welcome-message" class="text-center"></div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Main Content: Materials -->
+            <div class="main-container lg:col-span-2 p-6 rounded-xl shadow-2xl">
                 <h2 class="text-xl sm:text-2xl font-bold text-center mb-6 text-blue-300">Course Materials</h2>
                 <div id="materials-list" class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                    <!-- Materials will be dynamically loaded here -->
                     <p class="text-gray-400 col-span-full text-center">Loading materials...</p>
                 </div>
             </div>
-        </div>
 
-        <!-- Sidebar: Calendar and Attendance -->
-        <div class="main-container p-6 rounded-xl shadow-2xl space-y-8">
-            <!-- Calendar Section -->
-            <div>
-                <h2 class="text-xl font-bold text-center mb-4 text-blue-300">Training Calendar</h2>
-                <div id="calendar-container" class="bg-gray-800 p-4 rounded-lg">
-                    <div class="flex justify-between items-center mb-2">
-                        <button id="prev-month" class="text-gray-300 hover:text-white">&lt;</button>
-                        <h3 id="month-year" class="font-bold text-lg"></h3>
-                        <button id="next-month" class="text-gray-300 hover:text-white">&gt;</button>
-                    </div>
-                    <div id="calendar-grid" class="grid grid-cols-7 gap-2 text-center text-sm">
-                        <!-- Calendar will be generated here -->
-                    </div>
-                    <p class="text-xs text-center mt-2 text-gray-400"><span class="inline-block w-3 h-3 bg-green-500 rounded-full mr-1"></span> = Technical Training Day</p>
+            <!-- Sidebar: Attendance -->
+            <div class="main-container p-6 rounded-xl shadow-2xl space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-center mb-4 text-blue-300">Attendance</h2>
+                    <a href="scanner.html" id="scan-qr-btn" class="w-full block text-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition">Scan QR for Attendance</a>
                 </div>
-            </div>
-
-            <!-- Attendance Section -->
-            <div class="border-t border-gray-700 pt-6">
-                <h2 class="text-xl font-bold text-center mb-4 text-blue-300">Your Attendance</h2>
-                <div id="attendance-record" class="space-y-2 text-gray-300 h-48 overflow-y-auto pr-2">
-                    <!-- Attendance records will be loaded here -->
-                    <p class="text-gray-400 text-center">Loading attendance...</p>
+                <div class="border-t border-gray-700 pt-6">
+                    <h3 class="text-lg font-bold text-center mb-4 text-gray-300">Your Records</h3>
+                    <div id="attendance-record" class="space-y-2 text-gray-300 h-72 overflow-y-auto pr-2">
+                        <p class="text-gray-400 text-center">Loading attendance...</p>
+                    </div>
                 </div>
             </div>
         </div>

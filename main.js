@@ -20,7 +20,8 @@ import {
     deleteDoc,
     orderBy,
     limit,
-    updateDoc
+    updateDoc,
+    serverTimestamp
 } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
 // Your specific Firebase configuration is now included.
@@ -59,12 +60,13 @@ window.addEventListener('load', () => {
             if (userDoc.exists() && userDoc.data().role === 'admin') {
                 if (currentPage !== 'admin.html') { window.location.href = 'admin.html'; return; }
             } else {
-                if (currentPage !== 'dashboard.html') { window.location.href = 'dashboard.html'; return; }
+                if (currentPage !== 'dashboard.html' && currentPage !== 'scanner.html') { window.location.href = 'dashboard.html'; return; }
             }
             if (currentPage === 'dashboard.html') initStudentDashboard(user.uid, db);
             else if (currentPage === 'admin.html') initAdminDashboardLogic(db);
+            else if (currentPage === 'scanner.html') initQrScanner(user.uid, db);
         } else {
-            const protectedPages = ['dashboard.html', 'admin.html'];
+            const protectedPages = ['dashboard.html', 'admin.html', 'scanner.html'];
             if (protectedPages.includes(currentPage)) window.location.href = 'index.html';
         }
     });
@@ -216,6 +218,7 @@ async function initAdminDashboardLogic(db) {
     initContentManagement(db);
     initAttendanceManagement(db);
     initUserManagement(db);
+    initQrCodeGeneration(db);
 }
 
 // --- ADMIN: CONTENT MANAGEMENT ---
@@ -674,6 +677,129 @@ function initUserManagement(db) {
     loadUsers();
 }
 
+// --- ADMIN: QR CODE GENERATION ---
+function initQrCodeGeneration(db) {
+    const startSessionBtn = document.getElementById('start-session-btn');
+    if (!startSessionBtn) return;
+
+    const qrModal = document.getElementById('qr-modal');
+    const closeQrModalBtn = document.getElementById('close-qr-modal');
+    const qrcodeContainer = document.getElementById('qrcode-container');
+    const qrTimerEl = document.getElementById('qr-timer');
+    let timerInterval;
+
+    // FIX: Added a fallback for crypto.randomUUID
+    const generateUUID = () => {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    startSessionBtn.addEventListener('click', async () => {
+        try {
+            const token = generateUUID();
+            const now = new Date();
+            const expiry = new Date(now.getTime() + 5 * 60 * 1000);
+
+            await setDoc(doc(db, "attendance_sessions", token), {
+                createdAt: serverTimestamp(),
+                expiresAt: expiry
+            });
+
+            qrcodeContainer.innerHTML = '';
+            const qr = qrcode(0, 'L');
+            qr.addData(token);
+            qr.make();
+            qrcodeContainer.innerHTML = qr.createImgTag(6, 8);
+            
+            qrModal.classList.remove('hidden');
+
+            let timeLeft = 300;
+            qrTimerEl.textContent = `Expires in: 5:00`;
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                qrTimerEl.textContent = `Expires in: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    qrTimerEl.textContent = "EXPIRED";
+                }
+            }, 1000);
+
+        } catch (error) {
+            console.error("Failed to start session:", error);
+            alert("Could not start attendance session. Please try again.");
+        }
+    });
+
+    closeQrModalBtn.addEventListener('click', () => {
+        qrModal.classList.add('hidden');
+        clearInterval(timerInterval);
+    });
+}
+
+// --- STUDENT: QR CODE SCANNER ---
+function initQrScanner(uid, db) {
+    const scanStatusEl = document.getElementById('scan-status');
+    if (!scanStatusEl) return;
+
+    const html5QrCode = new Html5Qrcode("qr-reader");
+
+    const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
+        html5QrCode.stop();
+        scanStatusEl.textContent = "Processing...";
+        scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-yellow-400';
+
+        try {
+            const token = decodedText;
+            const today = new Date().toISOString().split('T')[0];
+
+            const sessionRef = doc(db, "attendance_sessions", token);
+            const sessionSnap = await getDoc(sessionRef);
+
+            if (!sessionSnap.exists() || new Date() > sessionSnap.data().expiresAt.toDate()) {
+                throw new Error("Invalid or expired QR code.");
+            }
+
+            const userDoc = await getDoc(doc(db, "users", uid));
+            if (!userDoc.exists()) throw new Error("User profile not found.");
+            
+            const { name, rollNo } = userDoc.data();
+            
+            const attendanceRef = doc(db, `users/${uid}/attendance`, today);
+            await setDoc(attendanceRef, { status: "Present", date: today });
+
+            const logQuery = query(collection(db, "attendance_logs"), where("studentId", "==", uid), where("date", "==", today));
+            const logSnapshot = await getDocs(logQuery);
+
+            if (logSnapshot.empty) {
+                await addDoc(collection(db, "attendance_logs"), {
+                    studentId: uid, studentName: name, rollNo, date: today, status: "Present", markedAt: new Date()
+                });
+            } else {
+                await updateDoc(logSnapshot.docs[0].ref, { status: "Present", markedAt: new Date() });
+            }
+
+            scanStatusEl.textContent = "Success! Attendance marked.";
+            scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-green-400';
+
+        } catch (error) {
+            console.error("Attendance marking failed:", error);
+            scanStatusEl.textContent = error.message;
+            scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-red-400';
+        }
+    };
+
+    const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+    html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback)
+        .catch(err => {
+            scanStatusEl.textContent = "Could not start camera.";
+            scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-red-400';
+        });
+}
+
 
 // --- Other functions ---
 function formatDateDDMMYYYY(dateString) {
@@ -690,7 +816,6 @@ async function loadSegregatedAttendanceHistory(db, date) {
         if(c) c.innerHTML = '<p class="text-gray-500 text-sm text-center">Loading records...</p>';
     });
 
-    // OPTIMIZED LOGIC: Fetch all users ONCE.
     const usersSnapshot = await getDocs(collection(db, "users"));
     const usersMap = new Map();
     usersSnapshot.forEach(doc => {
@@ -700,7 +825,6 @@ async function loadSegregatedAttendanceHistory(db, date) {
     const q = query(collection(db, "attendance_logs"), where("date", "==", date));
     const snapshot = await getDocs(q);
 
-    // Reset containers after fetching, before rendering.
     containers.forEach(c => {
         if(c) c.innerHTML = '<p class="text-gray-500 text-sm text-center">No records for this date.</p>';
     });
@@ -726,12 +850,10 @@ async function loadSegregatedAttendanceHistory(db, date) {
         }
     });
 
-    // Sort each list alphabetically by name
     recordsA.sort((a, b) => a.name.localeCompare(b.name));
     recordsB.sort((a, b) => a.name.localeCompare(b.name));
     recordsAdvanced.sort((a, b) => a.name.localeCompare(b.name));
 
-    // Function to render a sorted list
     const renderList = (container, records) => {
         if (records.length === 0) return;
         container.innerHTML = '';

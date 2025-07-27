@@ -7,8 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <!-- Add SheetJS library for Excel functionality -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- QR Code Generation Library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator/qrcode.js"></script>
 </head>
 <body class="min-h-screen">
     <canvas id="matrix-canvas"></canvas>
@@ -59,9 +60,13 @@
 
         <!-- Attendance Management Section -->
         <div id="attendance-section" class="tab-content hidden">
+             <div class="main-container p-6 rounded-lg mb-8">
+                <h2 class="text-xl sm:text-2xl font-bold mb-4 text-blue-300">Automated Attendance</h2>
+                <button id="start-session-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition">Start 5-Minute Attendance Session</button>
+            </div>
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div class="main-container p-6 rounded-lg lg:col-span-1">
-                    <h2 class="text-xl sm:text-2xl font-bold mb-4 text-blue-300">Mark Attendance</h2>
+                    <h2 class="text-xl sm:text-2xl font-bold mb-4 text-blue-300">Manual Attendance</h2>
                     <form id="attendance-form">
                         <div class="mb-4">
                             <label for="student-rollno" class="form-label">Student Roll No.</label>
@@ -81,7 +86,6 @@
                         </div>
                         <div class="flex flex-col gap-4">
                             <button type="submit" id="mark-attendance-button" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition">Mark Attendance</button>
-                            <!-- NEW: Delete button, hidden by default -->
                             <button type="button" id="delete-attendance-button" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition hidden">Delete This Record</button>
                         </div>
                         <p id="attendance-status-msg" class="text-green-400 text-center mt-4 h-4"></p>
@@ -135,6 +139,17 @@
             </div>
         </div>
     </main>
+
+    <!-- QR Code Modal -->
+    <div id="qr-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden z-50">
+        <div class="main-container p-8 rounded-lg text-center">
+            <h2 class="text-2xl font-bold text-white mb-4">Scan for Attendance</h2>
+            <div id="qrcode-container" class="bg-white p-4 rounded-lg inline-block"></div>
+            <p id="qr-timer" class="text-2xl font-bold text-yellow-400 mt-4"></p>
+            <button id="close-qr-modal" class="mt-6 bg-red-600 text-white font-bold py-2 px-6 rounded-lg">Close</button>
+        </div>
+    </div>
+
     <script type="module" src="main.js"></script>
 </body>
 </html>
