@@ -703,7 +703,7 @@ function initQrCodeGeneration(db) {
         try {
             const token = generateUUID();
             const now = new Date();
-            const expiry = new Date(now.getTime() + 5 * 60 * 1000);
+            const expiry = new Date(now.getTime() + 10 * 60 * 1000);   // Time Changing for Qr Code Step 1
 
             await setDoc(doc(db, "attendance_sessions", token), {
                 createdAt: serverTimestamp(),
@@ -718,8 +718,8 @@ function initQrCodeGeneration(db) {
             
             qrModal.classList.remove('hidden');
 
-            let timeLeft = 300;
-            qrTimerEl.textContent = `Expires in: 5:00`;
+            let timeLeft = 600;                                      // step 2
+            qrTimerEl.textContent = `Expires in: 10:00`;               // step 3
             timerInterval = setInterval(() => {
                 timeLeft--;
                 const minutes = Math.floor(timeLeft / 60);
