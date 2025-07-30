@@ -23,9 +23,9 @@ import {
     serverTimestamp,
     onSnapshot
 } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
-// FIXED: Removed the failing import statement for Html5Qrcode.
-// The library is now loaded via a <script> tag in scanner.html instead.
 
+// The Html5Qrcode library is loaded via a <script> tag in scanner.html.
+// No import statement is needed here.
 
 // Your specific Firebase configuration.
 const firebaseConfig = {
@@ -748,35 +748,51 @@ function initQrCodeGeneration(db) {
 
 // --- ADMIN: SITE SETTINGS (with Geolocation) ---
 async function initSiteSettings(db) {
-    const toggleBtn = document.getElementById('toggle-phone-collection-btn');
-    const statusEl = document.getElementById('setting-status');
+    const phoneToggleBtn = document.getElementById('toggle-phone-collection-btn');
+    const phoneStatusEl = document.getElementById('setting-status-phone');
+    const locationCheckToggleBtn = document.getElementById('toggle-location-check-btn');
+    const locationCheckStatusEl = document.getElementById('setting-status-location');
     const setLocationBtn = document.getElementById('set-location-btn');
     const locationCoordsEl = document.getElementById('location-coords');
-    if (!toggleBtn || !statusEl || !setLocationBtn || !locationCoordsEl) return;
+    
+    if (!phoneToggleBtn || !locationCheckToggleBtn) return;
 
     const settingsRef = doc(db, "settings", "config");
     const locationRef = doc(db, "settings", "location");
 
-    // Phone toggle logic
+    // Generic toggle handler
+    const handleToggle = async (button, statusEl, settingKey, enabledText, disabledText) => {
+        const currentStatus = statusEl.textContent === enabledText;
+        const update = {};
+        update[settingKey] = !currentStatus;
+        await setDoc(settingsRef, update, { merge: true });
+        statusEl.textContent = !currentStatus ? enabledText : disabledText;
+        statusEl.className = `font-bold text-lg ${!currentStatus ? 'text-green-400' : 'text-red-400'}`;
+    };
+
+    // Load initial settings
     try {
         const settingsDoc = await getDoc(settingsRef);
         if (settingsDoc.exists()) {
-            const isEnabled = settingsDoc.data().enablePhoneCollection;
-            statusEl.textContent = isEnabled ? 'ENABLED' : 'DISABLED';
-            statusEl.className = isEnabled ? 'font-bold text-lg text-green-400' : 'font-bold text-lg text-red-400';
+            const settings = settingsDoc.data();
+            // Phone setting
+            const isPhoneEnabled = settings.enablePhoneCollection;
+            phoneStatusEl.textContent = isPhoneEnabled ? 'ENABLED' : 'DISABLED';
+            phoneStatusEl.className = `font-bold text-lg ${isPhoneEnabled ? 'text-green-400' : 'text-red-400'}`;
+            // Location check setting
+            const isLocationCheckEnabled = settings.enableLocationCheck;
+            locationCheckStatusEl.textContent = isLocationCheckEnabled ? 'ENABLED' : 'DISABLED';
+            locationCheckStatusEl.className = `font-bold text-lg ${isLocationCheckEnabled ? 'text-green-400' : 'text-red-400'}`;
         } else {
-             statusEl.textContent = 'DISABLED';
-             statusEl.className = 'font-bold text-lg text-red-400';
+             phoneStatusEl.textContent = 'DISABLED';
+             phoneStatusEl.className = 'font-bold text-lg text-red-400';
+             locationCheckStatusEl.textContent = 'DISABLED';
+             locationCheckStatusEl.className = 'font-bold text-lg text-red-400';
         }
-    } catch(e) { console.error("Error loading phone setting", e)}
+    } catch(e) { console.error("Error loading settings", e)}
 
-    toggleBtn.addEventListener('click', async () => {
-        const currentStatus = statusEl.textContent === 'ENABLED';
-        await setDoc(settingsRef, { enablePhoneCollection: !currentStatus }, { merge: true });
-        statusEl.textContent = !currentStatus ? 'ENABLED' : 'DISABLED';
-        statusEl.className = !currentStatus ? 'font-bold text-lg text-green-400' : 'font-bold text-lg text-red-400';
-    });
-
+    phoneToggleBtn.addEventListener('click', () => handleToggle(phoneToggleBtn, phoneStatusEl, 'enablePhoneCollection', 'ENABLED', 'DISABLED'));
+    locationCheckToggleBtn.addEventListener('click', () => handleToggle(locationCheckToggleBtn, locationCheckStatusEl, 'enableLocationCheck', 'ENABLED', 'DISABLED'));
 
     // Geolocation logic
     const updateLocationUI = (locationData) => {
@@ -787,27 +803,18 @@ async function initSiteSettings(db) {
         }
     };
 
-    // Load initial location
     try {
         const locationDoc = await getDoc(locationRef);
-        if (locationDoc.exists()) {
-            updateLocationUI(locationDoc.data());
-        } else {
-            updateLocationUI(null);
-        }
-    } catch (error) {
-        console.error("Error loading location:", error);
-    }
+        updateLocationUI(locationDoc.exists() ? locationDoc.data() : null);
+    } catch (error) { console.error("Error loading location:", error); }
 
     setLocationBtn.addEventListener('click', () => {
         if (!navigator.geolocation) {
             alert("Geolocation is not supported by your browser.");
             return;
         }
-
         setLocationBtn.disabled = true;
         setLocationBtn.textContent = "Getting Location...";
-
         navigator.geolocation.getCurrentPosition(async (position) => {
             const { latitude, longitude } = position.coords;
             try {
@@ -815,18 +822,16 @@ async function initSiteSettings(db) {
                 updateLocationUI({ latitude, longitude });
                 alert("Classroom location saved successfully!");
             } catch (error) {
-                console.error("Failed to save location:", error);
-                alert("Error saving location. Check console.");
+                alert("Error saving location.");
             } finally {
                 setLocationBtn.disabled = false;
                 setLocationBtn.textContent = "Set Current Location";
             }
         }, (error) => {
-            console.error("Geolocation error:", error);
-            alert("Could not get location. Please ensure you have granted permission.");
+            alert("Could not get location. Please grant permission and ensure you have a network connection.");
             setLocationBtn.disabled = false;
             setLocationBtn.textContent = "Set Current Location";
-        }, { enableHighAccuracy: true });
+        }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     });
 }
 
@@ -836,39 +841,49 @@ function initQrScanner(uid, db) {
     const scanStatusEl = document.getElementById('scan-status');
     if (!scanStatusEl) return;
 
+    // The Html5Qrcode object is now available globally from the script tag in scanner.html
     const html5QrCode = new Html5Qrcode("qr-reader");
 
     const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
         html5QrCode.stop().catch(err => console.error("Failed to stop QR scanner:", err));
         
-        scanStatusEl.textContent = "Verifying location and QR code...";
+        scanStatusEl.textContent = "Verifying...";
         scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-yellow-400';
 
         try {
-            // 1. Get student's current location
-            const studentPosition = await new Promise((resolve, reject) => {
-                if (!navigator.geolocation) reject(new Error("Geolocation not supported."));
-                navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
-            });
-            
-            const { latitude: studentLat, longitude: studentLon } = studentPosition.coords;
+            // Check if location check is enabled by the admin
+            const settingsRef = doc(db, "settings", "config");
+            const settingsDoc = await getDoc(settingsRef);
+            const locationCheckEnabled = settingsDoc.exists() && settingsDoc.data().enableLocationCheck === true;
 
-            // 2. Get classroom location from DB
-            const locationRef = doc(db, "settings", "location");
-            const locationDoc = await getDoc(locationRef);
-            if (!locationDoc.exists()) throw new Error("Classroom location not set by admin.");
-            
-            const { latitude: classLat, longitude: classLon } = locationDoc.data();
+            if (locationCheckEnabled) {
+                scanStatusEl.textContent = "Getting your location...";
+                // 1. Get student's current location
+                const studentPosition = await new Promise((resolve, reject) => {
+                    if (!navigator.geolocation) reject(new Error("Geolocation not supported."));
+                    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+                });
+                
+                const { latitude: studentLat, longitude: studentLon } = studentPosition.coords;
 
-            // 3. Check distance
-            const distance = calculateDistance(studentLat, studentLon, classLat, classLon);
-            const ALLOWED_RADIUS_METERS = 50; // Set a 50-meter radius
-            
-            if (distance > ALLOWED_RADIUS_METERS) {
-                throw new Error(`You are too far from the classroom (${Math.round(distance)}m away).`);
+                // 2. Get classroom location from DB
+                const locationRef = doc(db, "settings", "location");
+                const locationDoc = await getDoc(locationRef);
+                if (!locationDoc.exists()) throw new Error("Classroom location not set by admin.");
+                
+                const { latitude: classLat, longitude: classLon } = locationDoc.data();
+
+                // 3. Check distance
+                const distance = calculateDistance(studentLat, studentLon, classLat, classLon);
+                const ALLOWED_RADIUS_METERS = 100; // Increased radius for better tolerance
+                
+                if (distance > ALLOWED_RADIUS_METERS) {
+                    throw new Error(`You are too far from the classroom (${Math.round(distance)}m away).`);
+                }
             }
 
-            // 4. If close enough, proceed with attendance marking
+            // 4. If location check passed (or was disabled), proceed with attendance marking
+            scanStatusEl.textContent = "Verifying QR code...";
             const token = decodedText;
             const today = new Date().toISOString().split('T')[0];
 
@@ -1040,7 +1055,6 @@ async function loadStudentMaterials(batch, db) {
     const materialsList = document.getElementById('materials-list');
     if (!materialsList) return;
 
-    // FIXED: Improved query logic for fetching materials.
     let q;
     if (batch === 'Advanced') {
         // Advanced students see 'Advanced' and 'Basic' materials
