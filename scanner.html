@@ -3,26 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scan Attendance QR</title>
+    <title>QR Code Scanner</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <!-- QR Scanner Library -->
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    
+    <!-- 
+      FIX: Load the QR scanner script here, before main.js.
+      This makes the Html5Qrcode object available globally on this page.
+    -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center">
     <canvas id="matrix-canvas"></canvas>
-    
-    <div class="main-container w-full max-w-lg p-6 sm:p-8 rounded-xl shadow-2xl m-4 text-center">
-        <h1 class="text-2xl sm:text-3xl font-bold font-code text-blue-400 mb-4">Scan Attendance Code</h1>
-        
-        <div id="qr-reader" class="w-full rounded-lg overflow-hidden border-2 border-gray-600"></div>
-        
-        <p id="scan-status" class="mt-4 h-8 text-lg font-semibold"></p>
-        
-        <a href="dashboard.html" class="mt-4 inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition">Back to Dashboard</a>
-    </div>
+    <main class="w-full max-w-lg p-8 z-10 text-center">
+        <div class="main-container p-6 sm:p-8 rounded-xl shadow-2xl">
+            <h1 class="text-2xl sm:text-3xl font-bold text-blue-300 mb-4">Scan Attendance QR</h1>
+            <div id="qr-reader" class="w-full max-w-sm mx-auto aspect-square bg-gray-900 rounded-lg overflow-hidden"></div>
+            <div id="scan-status" class="mt-4 h-8 text-lg font-semibold text-gray-400">Initializing scanner...</div>
+            <a href="dashboard.html" class="inline-block mt-6 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition">Cancel</a>
+        </div>
+    </main>
 
+    <!-- Load your main script as a module AFTER the library is loaded -->
     <script type="module" src="main.js"></script>
 </body>
 </html>

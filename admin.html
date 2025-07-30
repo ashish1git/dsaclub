@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,7 +9,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <!-- QR Code Generation Library -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator/qrcode.js"></script>
 </head>
 <body class="min-h-screen">
@@ -19,14 +19,12 @@
     </nav>
 
     <main class="w-full max-w-7xl p-4 sm:p-8 mx-auto my-8">
-        <!-- Tab Navigation -->
         <div class="mb-8 flex border-b border-gray-700">
             <button id="content-tab-btn" class="tab-btn active-tab">Content</button>
             <button id="attendance-tab-btn" class="tab-btn">Attendance</button>
             <button id="users-tab-btn" class="tab-btn">User Management</button>
         </div>
 
-        <!-- Content Management Section -->
         <div id="content-section" class="tab-content">
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div class="main-container p-6 rounded-lg">
@@ -58,7 +56,6 @@
             </div>
         </div>
 
-        <!-- Attendance Management Section -->
         <div id="attendance-section" class="tab-content hidden">
              <div class="main-container p-6 rounded-lg mb-8">
                 <h2 class="text-xl sm:text-2xl font-bold mb-4 text-blue-300">Automated Attendance</h2>
@@ -123,8 +120,31 @@
             </div>
         </div>
 
-        <!-- User Management Section -->
         <div id="users-section" class="tab-content hidden">
+            <div class="main-container p-6 rounded-lg mb-8">
+                <h2 class="text-xl sm:text-2xl font-bold mb-4 text-blue-300">Site Settings</h2>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between bg-gray-800 p-4 rounded-lg">
+                        <div>
+                            <h3 class="font-semibold text-white">Enable Phone Number Collection</h3>
+                            <p class="text-sm text-gray-400">Prompt students to enter their WhatsApp number.</p>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span id="setting-status" class="font-bold text-lg"></span>
+                            <button id="toggle-phone-collection-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition">Toggle</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between bg-gray-800 p-4 rounded-lg">
+                        <div>
+                            <h3 class="font-semibold text-white">Set Classroom Location</h3>
+                            <p class="text-sm text-gray-400">Click to save your current location for QR attendance.</p>
+                            <p id="location-coords" class="text-xs text-gray-500 mt-1"></p>
+                        </div>
+                        <button id="set-location-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition">Set Current Location</button>
+                    </div>
+                </div>
+            </div>
+
             <div class="main-container p-6 rounded-lg">
                 <div class="flex flex-col sm:flex-row justify-between sm:items-center mb-4 gap-4">
                     <h2 class="text-xl sm:text-2xl font-bold text-blue-300">Registered Students</h2>
@@ -139,8 +159,7 @@
             </div>
         </div>
     </main>
-
-    <!-- QR Code Modal -->
+    
     <div id="qr-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden z-50">
         <div class="main-container p-8 rounded-lg text-center">
             <h2 class="text-2xl font-bold text-white mb-4">Scan for Attendance</h2>

@@ -1,12 +1,12 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
 import { 
     getAuth, 
     createUserWithEmailAndPassword, 
     signInWithEmailAndPassword, 
     onAuthStateChanged,
     signOut 
-} from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
+} from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
 import { 
     getFirestore, 
     doc, 
@@ -19,13 +19,15 @@ import {
     getDocs,
     deleteDoc,
     orderBy,
-    limit,
     updateDoc,
     serverTimestamp,
     onSnapshot
-} from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
+// FIXED: Removed the failing import statement for Html5Qrcode.
+// The library is now loaded via a <script> tag in scanner.html instead.
 
-// Your specific Firebase configuration is now included.
+
+// Your specific Firebase configuration.
 const firebaseConfig = {
   apiKey: "AIzaSyDyNXHZbUtQ46TttMKZrianr5UVt_HVLNg",
   authDomain: "dsaportal-5ae69.firebaseapp.com",
@@ -220,6 +222,7 @@ async function initAdminDashboardLogic(db) {
     initAttendanceManagement(db);
     initUserManagement(db);
     initQrCodeGeneration(db);
+    initSiteSettings(db);
 }
 
 // --- ADMIN: CONTENT MANAGEMENT ---
@@ -703,7 +706,7 @@ function initQrCodeGeneration(db) {
         try {
             const token = generateUUID();
             const now = new Date();
-            const expiry = new Date(now.getTime() + 10 * 60 * 1000);   // Time Changing for Qr Code Step 1
+            const expiry = new Date(now.getTime() + 10 * 60 * 1000);   // 10 minute expiry
 
             await setDoc(doc(db, "attendance_sessions", token), {
                 createdAt: serverTimestamp(),
@@ -718,8 +721,8 @@ function initQrCodeGeneration(db) {
             
             qrModal.classList.remove('hidden');
 
-            let timeLeft = 600;                                      // step 2
-            qrTimerEl.textContent = `Expires in: 10:00`;               // step 3
+            let timeLeft = 600; // 10 minutes in seconds
+            qrTimerEl.textContent = `Expires in: 10:00`;
             timerInterval = setInterval(() => {
                 timeLeft--;
                 const minutes = Math.floor(timeLeft / 60);
@@ -743,7 +746,92 @@ function initQrCodeGeneration(db) {
     });
 }
 
-// --- STUDENT: QR CODE SCANNER ---
+// --- ADMIN: SITE SETTINGS (with Geolocation) ---
+async function initSiteSettings(db) {
+    const toggleBtn = document.getElementById('toggle-phone-collection-btn');
+    const statusEl = document.getElementById('setting-status');
+    const setLocationBtn = document.getElementById('set-location-btn');
+    const locationCoordsEl = document.getElementById('location-coords');
+    if (!toggleBtn || !statusEl || !setLocationBtn || !locationCoordsEl) return;
+
+    const settingsRef = doc(db, "settings", "config");
+    const locationRef = doc(db, "settings", "location");
+
+    // Phone toggle logic
+    try {
+        const settingsDoc = await getDoc(settingsRef);
+        if (settingsDoc.exists()) {
+            const isEnabled = settingsDoc.data().enablePhoneCollection;
+            statusEl.textContent = isEnabled ? 'ENABLED' : 'DISABLED';
+            statusEl.className = isEnabled ? 'font-bold text-lg text-green-400' : 'font-bold text-lg text-red-400';
+        } else {
+             statusEl.textContent = 'DISABLED';
+             statusEl.className = 'font-bold text-lg text-red-400';
+        }
+    } catch(e) { console.error("Error loading phone setting", e)}
+
+    toggleBtn.addEventListener('click', async () => {
+        const currentStatus = statusEl.textContent === 'ENABLED';
+        await setDoc(settingsRef, { enablePhoneCollection: !currentStatus }, { merge: true });
+        statusEl.textContent = !currentStatus ? 'ENABLED' : 'DISABLED';
+        statusEl.className = !currentStatus ? 'font-bold text-lg text-green-400' : 'font-bold text-lg text-red-400';
+    });
+
+
+    // Geolocation logic
+    const updateLocationUI = (locationData) => {
+        if (locationData && locationData.latitude) {
+            locationCoordsEl.textContent = `Saved: Lat ${locationData.latitude.toFixed(4)}, Lon ${locationData.longitude.toFixed(4)}`;
+        } else {
+            locationCoordsEl.textContent = "No location set.";
+        }
+    };
+
+    // Load initial location
+    try {
+        const locationDoc = await getDoc(locationRef);
+        if (locationDoc.exists()) {
+            updateLocationUI(locationDoc.data());
+        } else {
+            updateLocationUI(null);
+        }
+    } catch (error) {
+        console.error("Error loading location:", error);
+    }
+
+    setLocationBtn.addEventListener('click', () => {
+        if (!navigator.geolocation) {
+            alert("Geolocation is not supported by your browser.");
+            return;
+        }
+
+        setLocationBtn.disabled = true;
+        setLocationBtn.textContent = "Getting Location...";
+
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const { latitude, longitude } = position.coords;
+            try {
+                await setDoc(locationRef, { latitude, longitude });
+                updateLocationUI({ latitude, longitude });
+                alert("Classroom location saved successfully!");
+            } catch (error) {
+                console.error("Failed to save location:", error);
+                alert("Error saving location. Check console.");
+            } finally {
+                setLocationBtn.disabled = false;
+                setLocationBtn.textContent = "Set Current Location";
+            }
+        }, (error) => {
+            console.error("Geolocation error:", error);
+            alert("Could not get location. Please ensure you have granted permission.");
+            setLocationBtn.disabled = false;
+            setLocationBtn.textContent = "Set Current Location";
+        }, { enableHighAccuracy: true });
+    });
+}
+
+
+// --- STUDENT: QR CODE SCANNER (with Geolocation) ---
 function initQrScanner(uid, db) {
     const scanStatusEl = document.getElementById('scan-status');
     if (!scanStatusEl) return;
@@ -753,10 +841,34 @@ function initQrScanner(uid, db) {
     const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
         html5QrCode.stop().catch(err => console.error("Failed to stop QR scanner:", err));
         
-        scanStatusEl.textContent = "Processing...";
+        scanStatusEl.textContent = "Verifying location and QR code...";
         scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-yellow-400';
 
         try {
+            // 1. Get student's current location
+            const studentPosition = await new Promise((resolve, reject) => {
+                if (!navigator.geolocation) reject(new Error("Geolocation not supported."));
+                navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+            });
+            
+            const { latitude: studentLat, longitude: studentLon } = studentPosition.coords;
+
+            // 2. Get classroom location from DB
+            const locationRef = doc(db, "settings", "location");
+            const locationDoc = await getDoc(locationRef);
+            if (!locationDoc.exists()) throw new Error("Classroom location not set by admin.");
+            
+            const { latitude: classLat, longitude: classLon } = locationDoc.data();
+
+            // 3. Check distance
+            const distance = calculateDistance(studentLat, studentLon, classLat, classLon);
+            const ALLOWED_RADIUS_METERS = 50; // Set a 50-meter radius
+            
+            if (distance > ALLOWED_RADIUS_METERS) {
+                throw new Error(`You are too far from the classroom (${Math.round(distance)}m away).`);
+            }
+
+            // 4. If close enough, proceed with attendance marking
             const token = decodedText;
             const today = new Date().toISOString().split('T')[0];
 
@@ -785,7 +897,7 @@ function initQrScanner(uid, db) {
             await addDoc(collection(db, "attendance_logs"), {
                 studentId: uid, studentName: name, rollNo, date: today, status: "Present", markedAt: new Date()
             });
-
+            
             scanStatusEl.textContent = "Success! Attendance marked.";
             scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-green-400';
             playBeep();
@@ -807,7 +919,7 @@ function initQrScanner(uid, db) {
 }
 
 
-// --- Other functions ---
+// --- HELPER / UTILITY FUNCTIONS ---
 function playBeep() {
     const context = new (window.AudioContext || window.webkitAudioContext)();
     if (!context) return;
@@ -822,10 +934,12 @@ function playBeep() {
     oscillator.start(context.currentTime);
     oscillator.stop(context.currentTime + 0.5);
 }
+
 function formatDateDDMMYYYY(dateString) {
     const [year, month, day] = dateString.split('-');
-    return `${day}${month}${year}`;
+    return `${day}/${month}/${year}`;
 }
+
 function loadSegregatedAttendanceHistory(db, date) {
     const historyContainerA = document.getElementById('attendance-history-A');
     const historyContainerB = document.getElementById('attendance-history-B');
@@ -882,14 +996,12 @@ function loadSegregatedAttendanceHistory(db, date) {
                 const recordEl = document.createElement('div');
                 recordEl.className = 'bg-gray-800 p-2 rounded text-sm mb-2';
                 const statusColor = record.status === 'Present' ? 'text-green-400' : 'text-red-400';
-                const formattedDate = formatDateDDMMYYYY(record.date);
                 recordEl.innerHTML = `
                     <div class="flex justify-between items-center">
                         <span class="font-bold">${index + 1}. ${record.studentName}</span>
                         <span class="font-bold ${statusColor}">${record.status}</span>
                     </div>
                     <div class="text-xs text-gray-400">Roll: ${record.rollNo}</div>
-                    <div class="text-xs text-gray-500 text-right">${formattedDate}</div>
                 `;
                 container.appendChild(recordEl);
             });
@@ -900,6 +1012,7 @@ function loadSegregatedAttendanceHistory(db, date) {
         renderList(historyContainerAdvanced, recordsAdvanced);
     });
 }
+
 async function loadStudentAttendance(uid, db) {
     const attendanceRecordEl = document.getElementById('attendance-record');
     if (!attendanceRecordEl) return;
@@ -922,10 +1035,21 @@ async function loadStudentAttendance(uid, db) {
         attendanceRecordEl.appendChild(recordEl);
     });
 }
+
 async function loadStudentMaterials(batch, db) {
     const materialsList = document.getElementById('materials-list');
     if (!materialsList) return;
-    const q = query(collection(db, "materials"), where("targetBatch", "==", batch));
+
+    // FIXED: Improved query logic for fetching materials.
+    let q;
+    if (batch === 'Advanced') {
+        // Advanced students see 'Advanced' and 'Basic' materials
+        q = query(collection(db, "materials"), where("targetBatch", "in", ["Advanced", "Basic"]));
+    } else {
+        // Basic students only see 'Basic' materials
+        q = query(collection(db, "materials"), where("targetBatch", "==", "Basic"));
+    }
+    
     const querySnapshot = await getDocs(q);
     
     materialsList.innerHTML = '';
@@ -953,6 +1077,7 @@ async function loadStudentMaterials(batch, db) {
         materialsList.innerHTML += materialCard;
     });
 }
+
 async function loadAdminMaterials(db) {
     const materialsList = document.getElementById('manage-materials-list');
     if (!materialsList) return;
@@ -993,4 +1118,20 @@ async function loadAdminMaterials(db) {
             }
         });
     });
+}
+
+// Geolocation Distance Calculator
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371e3; // metres
+    const φ1 = lat1 * Math.PI/180; // φ, λ in radians
+    const φ2 = lat2 * Math.PI/180;
+    const Δφ = (lat2-lat1) * Math.PI/180;
+    const Δλ = (lon2-lon1) * Math.PI/180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c; // in metres
 }
