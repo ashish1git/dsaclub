@@ -5,7 +5,8 @@ import {
     createUserWithEmailAndPassword, 
     signInWithEmailAndPassword, 
     onAuthStateChanged,
-    signOut 
+    signOut,
+    updatePassword
 } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
 import { 
     getFirestore, 
@@ -50,6 +51,18 @@ try {
     document.body.innerHTML = '<div style="color: red; font-size: 24px; text-align: center; padding: 50px;">Error: Could not connect to the server. Please check your Firebase configuration.</div>';
 }
 
+// --- HELPER FUNCTION ---
+async function getUserProfile(uid) {
+    if (!uid) return null;
+    const userDocRef = doc(db, "users", uid);
+    const userDocSnap = await getDoc(userDocRef);
+    if (!userDocSnap.exists()) {
+        console.warn(`No user profile found for UID: ${uid}`);
+        return null;
+    }
+    return { id: userDocSnap.id, ...userDocSnap.data() };
+}
+
 // --- MAIN INITIALIZATION LOGIC ---
 window.addEventListener('load', () => {
     setupMatrixAnimation();
@@ -58,16 +71,23 @@ window.addEventListener('load', () => {
     onAuthStateChanged(auth, async (user) => {
         const currentPage = window.location.pathname.split("/").pop();
         if (user) {
-            const userDocRef = doc(db, "users", user.uid);
-            const userDoc = await getDoc(userDocRef);
-            if (userDoc.exists() && userDoc.data().role === 'admin') {
+            const userProfile = await getUserProfile(user.uid);
+            
+            if (userProfile && userProfile.role === 'admin') {
                 if (currentPage !== 'admin.html') { window.location.href = 'admin.html'; return; }
-            } else {
+            } else if (userProfile) {
                 if (currentPage !== 'dashboard.html' && currentPage !== 'scanner.html') { window.location.href = 'dashboard.html'; return; }
+            } else {
+                console.error("Logged in user has no profile. Logging out.");
+                await signOut(auth);
+                return;
             }
-            if (currentPage === 'dashboard.html') initStudentDashboard(user.uid, db);
-            else if (currentPage === 'admin.html') initAdminDashboardLogic(db);
-            else if (currentPage === 'scanner.html') initQrScanner(user.uid, db);
+
+            if (userProfile) {
+                if (currentPage === 'dashboard.html') initStudentDashboard(userProfile, db);
+                else if (currentPage === 'admin.html') initAdminDashboardLogic(db);
+                else if (currentPage === 'scanner.html') initQrScanner(userProfile.id, db);
+            }
         } else {
             const protectedPages = ['dashboard.html', 'admin.html', 'scanner.html'];
             if (protectedPages.includes(currentPage)) window.location.href = 'index.html';
@@ -76,7 +96,7 @@ window.addEventListener('load', () => {
     setupAuthForms();
 });
 
-// --- FUNCTION DEFINITIONS ---
+// --- UI & ANIMATION ---
 function setupMatrixAnimation() {
     const canvas = document.getElementById('matrix-canvas');
     if (!canvas) return;
@@ -120,31 +140,58 @@ function setupMatrixAnimation() {
     setupCanvas();
 }
 
+// --- AUTHENTICATION ---
 function setupAuthForms() {
     const signupForm = document.getElementById('signup-form');
     if (signupForm) {
         signupForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const button = e.target.querySelector('button[type="submit"]');
-            const originalText = button.textContent;
             button.classList.add('btn-loading');
             button.disabled = true;
 
             const name = document.getElementById('signup-name').value;
             const email = document.getElementById('signup-email').value;
-            const password = document.getElementById('signup-password').value;
             const rollNo = document.getElementById('signup-roll').value;
             const moodleId = document.getElementById('signup-moodle').value;
             const division = document.getElementById('signup-division').value;
             const batch = document.getElementById('signup-batch').value;
+            const password = document.getElementById('signup-password').value;
             const errorEl = document.getElementById('signup-error');
+            errorEl.textContent = '';
+
             try {
+                // Check if Moodle ID or email already exists to prevent duplicates
+                const moodleQuery = query(collection(db, "users"), where("moodleId", "==", moodleId));
+                const emailQuery = query(collection(db, "users"), where("email", "==", email));
+                const moodleSnapshot = await getDocs(moodleQuery);
+                const emailSnapshot = await getDocs(emailQuery);
+
+                if (!moodleSnapshot.empty) {
+                    throw new Error("Moodle ID is already registered.");
+                }
+                if (!emailSnapshot.empty) {
+                    throw new Error("Email is already registered.");
+                }
+
+                // Create Firebase Auth user
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
-                await setDoc(doc(db, "users", user.uid), { name, email, rollNo, moodleId, division, batch, role: 'student' });
+
+                // Create user document in Firestore with the UID as the document ID
+                await setDoc(doc(db, "users", user.uid), {
+                    uid: user.uid,
+                    name,
+                    email,
+                    rollNo,
+                    moodleId,
+                    division,
+                    batch,
+                    role: 'student'
+                });
+                // onAuthStateChanged will handle the redirect
             } catch (error) {
                 errorEl.textContent = error.message.replace('Firebase: ', '');
-                button.textContent = originalText;
                 button.classList.remove('btn-loading');
                 button.disabled = false;
             }
@@ -156,18 +203,38 @@ function setupAuthForms() {
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const button = e.target.querySelector('button[type="submit"]');
-            const originalText = button.textContent;
             button.classList.add('btn-loading');
             button.disabled = true;
 
-            const email = document.getElementById('login-email').value;
+            const identifier = document.getElementById('login-identifier').value;
             const password = document.getElementById('login-password').value;
             const errorEl = document.getElementById('login-error');
+            errorEl.textContent = '';
+
             try {
-                await signInWithEmailAndPassword(auth, email, password);
+                if (identifier.includes('@')) {
+                    // --- ADMIN LOGIN PATH ---
+                    await signInWithEmailAndPassword(auth, identifier, password);
+                } else {
+                    // --- STUDENT LOGIN PATH ---
+                    const moodleId = identifier;
+                    const q = query(collection(db, "users"), where("moodleId", "==", moodleId));
+                    const querySnapshot = await getDocs(q);
+
+                    if (querySnapshot.empty) {
+                        throw new Error("Moodle ID not found.");
+                    }
+                    
+                    const studentData = querySnapshot.docs[0].data();
+                    if (!studentData.email) {
+                        throw new Error("Account data is incomplete. Please ask the student to register.");
+                    }
+
+                    await signInWithEmailAndPassword(auth, studentData.email, password);
+                }
             } catch (error) {
-                errorEl.textContent = "Invalid email or password.";
-                button.textContent = originalText;
+                console.error("Login Error:", error);
+                errorEl.textContent = "Invalid credential or password.";
                 button.classList.remove('btn-loading');
                 button.disabled = false;
             }
@@ -177,15 +244,58 @@ function setupAuthForms() {
     if(logoutButton) logoutButton.addEventListener('click', async () => await signOut(auth));
 }
 
-async function initStudentDashboard(uid, db) {
-    const userDoc = await getDoc(doc(db, "users", uid));
-    if (!userDoc.exists()) return;
-    const userData = userDoc.data();
+
+// --- STUDENT DASHBOARD ---
+async function initStudentDashboard(userData, db) {
+    if (!userData) return;
     const welcomeMessage = document.getElementById('welcome-message');
     welcomeMessage.innerHTML = `<h1 class="text-2xl sm:text-3xl md:text-4xl font-bold font-code text-blue-400">Welcome, ${userData.name}!</h1><p class="text-gray-400 mt-2 text-sm sm:text-base">Your Batch: <span class="font-bold text-green-400">${userData.division} - ${userData.batch}</span> | Lab: <span class="font-bold text-green-400">${userData.batch === 'Advanced' ? '407' : (userData.division === 'A' ? '406' : '405')}</span></p>`;
     
-    loadStudentAttendance(uid, db);
+    loadStudentAttendance(userData.id, db);
     loadStudentMaterials(userData.batch, db);
+    setupPasswordChangeForm();
+}
+
+function setupPasswordChangeForm() {
+    const passwordForm = document.getElementById('change-password-form');
+    if (!passwordForm) return;
+
+    passwordForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const newPassword = document.getElementById('new-password').value;
+        const button = document.getElementById('change-password-button');
+        const statusEl = document.getElementById('change-password-status');
+
+        if (newPassword.length < 6) {
+            statusEl.textContent = "Password must be at least 6 characters.";
+            statusEl.className = 'text-red-400 text-center h-4 mt-4';
+            return;
+        }
+
+        button.disabled = true;
+        statusEl.textContent = "Changing...";
+        statusEl.className = 'text-yellow-400 text-center h-4 mt-4';
+
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("Not logged in.");
+            
+            await updatePassword(user, newPassword);
+            
+            statusEl.textContent = "Password changed successfully!";
+            statusEl.className = 'text-green-400 text-center h-4 mt-4';
+            passwordForm.reset();
+        } catch (error) {
+            console.error("Password change failed:", error);
+            statusEl.textContent = "Failed to change password.";
+            statusEl.className = 'text-red-400 text-center h-4 mt-4';
+        } finally {
+            button.disabled = false;
+            setTimeout(() => {
+                statusEl.textContent = '';
+            }, 3000);
+        }
+    });
 }
 
 // --- ADMIN DASHBOARD ---
@@ -254,7 +364,7 @@ function initContentManagement(db) {
     loadAdminMaterials(db);
 }
 
-// --- ADMIN: ATTENDANCE MANAGEMENT (with Delete) ---
+// --- ADMIN: ATTENDANCE MANAGEMENT ---
 function initAttendanceManagement(db) {
     const attendanceForm = document.getElementById('attendance-form');
     if (!attendanceForm) return;
@@ -267,15 +377,12 @@ function initAttendanceManagement(db) {
     const deleteAttendanceButton = document.getElementById('delete-attendance-button');
     const historyDatePicker = document.getElementById('history-date-picker');
     const exportAttendanceBtn = document.getElementById('export-attendance-btn');
-    const importAttendanceBtn = document.getElementById('import-attendance-btn');
-    const importAttendanceInput = document.getElementById('import-attendance-input');
-    const importAttendanceStatusEl = document.getElementById('import-attendance-status');
-
+    
     const today = new Date().toISOString().split('T')[0];
     dateInput.value = today;
     if (historyDatePicker) historyDatePicker.value = today;
     
-    let unsubscribeFromHistory; // To manage the live listener
+    let unsubscribeFromHistory; 
 
     const fetchExistingAttendance = async () => {
         const rollNo = rollNoInput.value.trim();
@@ -284,7 +391,7 @@ function initAttendanceManagement(db) {
         nameConfirmEl.classList.remove('text-red-400');
         attendanceButton.textContent = 'Mark Attendance';
         statusSelect.value = 'Present';
-        deleteAttendanceButton.classList.add('hidden'); // Hide delete button by default
+        deleteAttendanceButton.classList.add('hidden');
 
         if (!rollNo) return;
 
@@ -309,7 +416,7 @@ function initAttendanceManagement(db) {
             if (attendanceSnap.exists()) {
                 statusSelect.value = attendanceSnap.data().status;
                 attendanceButton.textContent = 'Update Attendance';
-                deleteAttendanceButton.classList.remove('hidden'); // Show delete button
+                deleteAttendanceButton.classList.remove('hidden');
             }
 
         } catch (error) {
@@ -350,10 +457,8 @@ function initAttendanceManagement(db) {
 
             const studentId = userSnapshot.docs[0].id;
 
-            // Delete from student's subcollection
             await deleteDoc(doc(db, `users/${studentId}/attendance`, date));
 
-            // Delete from central logs
             const logQuery = query(collection(db, "attendance_logs"), where("studentId", "==", studentId), where("date", "==", date));
             const logSnapshot = await getDocs(logQuery);
             if (!logSnapshot.empty) {
@@ -365,7 +470,6 @@ function initAttendanceManagement(db) {
             nameConfirmEl.textContent = '';
             dateInput.value = today;
             deleteAttendanceButton.classList.add('hidden');
-            // No need to call load history again, the live listener will handle it.
 
         } catch (error) {
             console.error("Deletion failed:", error);
@@ -392,7 +496,7 @@ function initAttendanceManagement(db) {
             
             const studentDoc = querySnapshot.docs[0];
             const studentId = studentDoc.id;
-            const studentName = studentDoc.data().name;
+            const studentData = studentDoc.data();
             
             const attendanceRef = doc(db, `users/${studentId}/attendance`, date);
             await setDoc(attendanceRef, { status: newStatus, date });
@@ -400,10 +504,17 @@ function initAttendanceManagement(db) {
             const logQuery = query(collection(db, "attendance_logs"), where("studentId", "==", studentId), where("date", "==", date));
             const logSnapshot = await getDocs(logQuery);
 
+            const logData = {
+                studentId: studentId,
+                studentName: studentData.name,
+                rollNo: studentData.rollNo,
+                date: date,
+                status: newStatus,
+                markedAt: new Date()
+            };
+
             if (logSnapshot.empty) {
-                await addDoc(collection(db, "attendance_logs"), {
-                    studentId, studentName, rollNo, date, status: newStatus, markedAt: new Date()
-                });
+                await addDoc(collection(db, "attendance_logs"), logData);
             } else {
                 const logDocId = logSnapshot.docs[0].id;
                 await updateDoc(doc(db, "attendance_logs", logDocId), { status: newStatus, markedAt: new Date() });
@@ -479,75 +590,10 @@ function initAttendanceManagement(db) {
         }
     });
     
-    importAttendanceBtn.addEventListener('click', () => importAttendanceInput.click());
-    importAttendanceInput.addEventListener('change', (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                importAttendanceStatusEl.textContent = "Importing... Please wait.";
-                importAttendanceStatusEl.classList.remove('text-red-400');
-                importAttendanceStatusEl.classList.add('text-green-400');
-
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const recordsToImport = XLSX.utils.sheet_to_json(worksheet);
-
-                let successCount = 0;
-                let failCount = 0;
-
-                for (const record of recordsToImport) {
-                    try {
-                        const { rollNo, date, status } = record;
-                        if (!rollNo || !date || !status) {
-                            throw new Error("Missing required fields (rollNo, date, status)");
-                        }
-                        
-                        const q = query(collection(db, "users"), where("rollNo", "==", String(rollNo)));
-                        const userSnapshot = await getDocs(q);
-                        if (userSnapshot.empty) throw new Error(`User with rollNo ${rollNo} not found.`);
-                        
-                        const studentDoc = userSnapshot.docs[0];
-                        const studentId = studentDoc.id;
-                        const studentName = studentDoc.data().name;
-
-                        const attendanceRef = doc(db, `users/${studentId}/attendance`, date);
-                        await setDoc(attendanceRef, { status, date });
-
-                        const logQuery = query(collection(db, "attendance_logs"), where("studentId", "==", studentId), where("date", "==", date));
-                        const logSnapshot = await getDocs(logQuery);
-
-                        if (logSnapshot.empty) {
-                            await addDoc(collection(db, "attendance_logs"), { studentId, studentName, rollNo, date, status, markedAt: new Date() });
-                        } else {
-                            await updateDoc(logSnapshot.docs[0].ref, { status, markedAt: new Date() });
-                        }
-                        successCount++;
-                    } catch (error) {
-                        console.warn(`Could not import record for rollNo ${record.rollNo}:`, error.message);
-                        failCount++;
-                    }
-                }
-                importAttendanceStatusEl.textContent = `Import complete. Success: ${successCount}, Failed: ${failCount}`;
-                // The live listener will automatically refresh the view.
-            } catch (error) {
-                console.error("Import failed:", error);
-                importAttendanceStatusEl.textContent = "Import failed. Check file format.";
-                importAttendanceStatusEl.classList.add('text-red-400');
-            } finally {
-                importAttendanceInput.value = '';
-            }
-        };
-        reader.readAsArrayBuffer(file);
-    });
-    
     unsubscribeFromHistory = loadSegregatedAttendanceHistory(db, today);
 }
 
-// --- ADMIN: USER MANAGEMENT ---
+// --- ADMIN: USER MANAGEMENT (REBUILT IMPORT) ---
 function initUserManagement(db) {
     const userListEl = document.getElementById('user-list');
     const exportBtn = document.getElementById('export-users-btn');
@@ -556,12 +602,15 @@ function initUserManagement(db) {
     const importStatusEl = document.getElementById('import-users-status');
     if (!userListEl) return;
 
-    // EXPORT LOGIC
     exportBtn.addEventListener('click', async () => {
         try {
             const usersQuery = query(collection(db, "users"), where("role", "==", "student"));
             const usersSnapshot = await getDocs(usersQuery);
-            const usersData = usersSnapshot.docs.map(doc => doc.data());
+            const usersData = usersSnapshot.docs.map(doc => {
+                const data = doc.data();
+                const { uid, ...rest } = data; // Exclude uid from export
+                return rest;
+            });
 
             const worksheet = XLSX.utils.json_to_sheet(usersData);
             const workbook = XLSX.utils.book_new();
@@ -573,7 +622,6 @@ function initUserManagement(db) {
         }
     });
 
-    // IMPORT LOGIC
     importBtn.addEventListener('click', () => importFileInput.click());
     importFileInput.addEventListener('change', (event) => {
         const file = event.target.files[0];
@@ -581,7 +629,7 @@ function initUserManagement(db) {
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
-                importStatusEl.textContent = "Importing... Please wait.";
+                importStatusEl.textContent = "Processing... Please wait.";
                 importStatusEl.classList.remove('text-red-400');
                 importStatusEl.classList.add('text-green-400');
 
@@ -592,32 +640,55 @@ function initUserManagement(db) {
                 const usersToImport = XLSX.utils.sheet_to_json(worksheet);
 
                 let successCount = 0;
+                let updateCount = 0;
                 let failCount = 0;
 
                 for (const user of usersToImport) {
                     try {
-                        const userCredential = await createUserWithEmailAndPassword(auth, user.email, 'password123');
-                        const newUid = userCredential.user.uid;
+                        // Find user by Moodle ID OR Email to handle both cases
+                        const moodleQuery = query(collection(db, "users"), where("moodleId", "==", String(user.moodleId)));
+                        const emailQuery = query(collection(db, "users"), where("email", "==", String(user.email)));
                         
-                        await setDoc(doc(db, "users", newUid), {
+                        const moodleSnapshot = await getDocs(moodleQuery);
+                        const emailSnapshot = await getDocs(emailQuery);
+
+                        let existingUserDoc = null;
+                        if (!moodleSnapshot.empty) {
+                            existingUserDoc = moodleSnapshot.docs[0];
+                        } else if (!emailSnapshot.empty) {
+                            existingUserDoc = emailSnapshot.docs[0];
+                        }
+                        
+                        const userData = {
                             name: user.name,
-                            email: user.email,
                             rollNo: String(user.rollNo),
                             moodleId: String(user.moodleId),
                             division: user.division,
                             batch: user.batch,
+                            email: user.email,
                             role: 'student'
-                        });
-                        successCount++;
+                        };
+
+                        if (existingUserDoc) {
+                            // --- UPDATE PATH ---
+                            await updateDoc(existingUserDoc.ref, userData);
+                            updateCount++;
+                        } else {
+                            // --- CREATE PATH (Profile only, no Auth) ---
+                            await addDoc(collection(db, "users"), {
+                                ...userData,
+                                uid: null // UID will be set when the user registers
+                            });
+                            successCount++;
+                        }
                     } catch (error) {
-                        console.warn(`Could not import user ${user.email}:`, error.message);
+                        console.error(`Failed to process user ${user.moodleId}:`, error);
                         failCount++;
                     }
                 }
-                importStatusEl.textContent = `Import complete. Success: ${successCount}, Failed: ${failCount}`;
+                importStatusEl.textContent = `Import complete. Added: ${successCount}, Updated: ${updateCount}, Failed: ${failCount}`;
                 loadUsers();
             } catch (error) {
-                console.error("Import failed:", error);
                 importStatusEl.textContent = "Import failed. Check file format.";
                 importStatusEl.classList.add('text-red-400');
             } finally {
@@ -643,11 +714,19 @@ function initUserManagement(db) {
 
                 const userEl = document.createElement('div');
                 userEl.className = 'bg-gray-800 p-3 rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4';
+                
+                const activationStatus = user.uid 
+                    ? `<span class="text-xs text-green-400 bg-green-900/50 px-2 py-1 rounded-full">REGISTERED</span>` 
+                    : `<span class="text-xs text-yellow-400 bg-yellow-900/50 px-2 py-1 rounded-full">IMPORTED</span>`;
+
                 userEl.innerHTML = `
                     <div class="flex-grow">
-                        <p class="font-bold text-white">${user.name}</p>
+                        <div class="flex items-center gap-3">
+                           <p class="font-bold text-white">${user.name}</p>
+                           ${activationStatus}
+                        </div>
                         <p class="text-sm text-gray-400">Roll: ${user.rollNo} | Batch: ${user.division} - ${user.batch}</p>
-                        <p class="text-xs text-gray-500">${user.email}</p>
+                        <p class="text-xs text-gray-500">Moodle ID: ${user.moodleId} | Email: ${user.email || 'N/A'}</p>
                     </div>
                     <button data-uid="${doc.id}" class="delete-user-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-sm w-full sm:w-auto">Delete</button>
                 `;
@@ -662,13 +741,12 @@ function initUserManagement(db) {
                     
                     const userToDelete = userDoc.data();
                     
-                    if (confirm(`Are you sure you want to permanently delete ${userToDelete.name} (Roll: ${userToDelete.rollNo})?\n\nThis will delete their data from the database. It CANNOT delete their login account.`)) {
+                    if (confirm(`Are you sure you want to permanently delete ${userToDelete.name} (Roll: ${userToDelete.rollNo})? This will delete their data from the database. It CANNOT delete their login account automatically.`)) {
                         try {
                             await deleteDoc(doc(db, "users", userIdToDelete));
                             alert('User data deleted from database.');
                             loadUsers();
                         } catch (error) {
-                            console.error("Error deleting user data:", error);
                             alert("Failed to delete user data.");
                         }
                     }
@@ -676,7 +754,6 @@ function initUserManagement(db) {
             });
 
         } catch (error) {
-            console.error("Error loading users:", error);
             userListEl.innerHTML = '<p class="text-red-400">Failed to load users.</p>';
         }
     };
@@ -684,7 +761,7 @@ function initUserManagement(db) {
     loadUsers();
 }
 
-// --- ADMIN: QR CODE GENERATION ---
+// --- ADMIN: QR CODE GENERATION & SITE SETTINGS ---
 function initQrCodeGeneration(db) {
     const startSessionBtn = document.getElementById('start-session-btn');
     if (!startSessionBtn) return;
@@ -695,18 +772,15 @@ function initQrCodeGeneration(db) {
     const qrTimerEl = document.getElementById('qr-timer');
     let timerInterval;
 
-    const generateUUID = () => {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-        });
-    }
+    const generateUUID = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
 
     startSessionBtn.addEventListener('click', async () => {
         try {
             const token = generateUUID();
-            const now = new Date();
-            const expiry = new Date(now.getTime() + 10 * 60 * 1000);   // 10 minute expiry
+            const expiry = new Date(new Date().getTime() + 5 * 60 * 1000);
 
             await setDoc(doc(db, "attendance_sessions", token), {
                 createdAt: serverTimestamp(),
@@ -721,13 +795,14 @@ function initQrCodeGeneration(db) {
             
             qrModal.classList.remove('hidden');
 
-            let timeLeft = 600; // 10 minutes in seconds
-            qrTimerEl.textContent = `Expires in: 10:00`;
+            let timeLeft = 300;
+            qrTimerEl.textContent = `Expires in: 05:00`;
+            if(timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(() => {
                 timeLeft--;
                 const minutes = Math.floor(timeLeft / 60);
                 const seconds = timeLeft % 60;
-                qrTimerEl.textContent = `Expires in: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+                qrTimerEl.textContent = `Expires in: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
                 if (timeLeft <= 0) {
                     clearInterval(timerInterval);
                     qrTimerEl.textContent = "EXPIRED";
@@ -735,7 +810,6 @@ function initQrCodeGeneration(db) {
             }, 1000);
 
         } catch (error) {
-            console.error("Failed to start session:", error);
             alert("Could not start attendance session. Please try again.");
         }
     });
@@ -746,21 +820,17 @@ function initQrCodeGeneration(db) {
     });
 }
 
-// --- ADMIN: SITE SETTINGS (with Geolocation) ---
 async function initSiteSettings(db) {
-    const phoneToggleBtn = document.getElementById('toggle-phone-collection-btn');
-    const phoneStatusEl = document.getElementById('setting-status-phone');
     const locationCheckToggleBtn = document.getElementById('toggle-location-check-btn');
     const locationCheckStatusEl = document.getElementById('setting-status-location');
     const setLocationBtn = document.getElementById('set-location-btn');
     const locationCoordsEl = document.getElementById('location-coords');
     
-    if (!phoneToggleBtn || !locationCheckToggleBtn) return;
+    if (!locationCheckToggleBtn) return;
 
     const settingsRef = doc(db, "settings", "config");
     const locationRef = doc(db, "settings", "location");
 
-    // Generic toggle handler
     const handleToggle = async (button, statusEl, settingKey, enabledText, disabledText) => {
         const currentStatus = statusEl.textContent === enabledText;
         const update = {};
@@ -770,31 +840,21 @@ async function initSiteSettings(db) {
         statusEl.className = `font-bold text-lg ${!currentStatus ? 'text-green-400' : 'text-red-400'}`;
     };
 
-    // Load initial settings
     try {
         const settingsDoc = await getDoc(settingsRef);
         if (settingsDoc.exists()) {
             const settings = settingsDoc.data();
-            // Phone setting
-            const isPhoneEnabled = settings.enablePhoneCollection;
-            phoneStatusEl.textContent = isPhoneEnabled ? 'ENABLED' : 'DISABLED';
-            phoneStatusEl.className = `font-bold text-lg ${isPhoneEnabled ? 'text-green-400' : 'text-red-400'}`;
-            // Location check setting
             const isLocationCheckEnabled = settings.enableLocationCheck;
             locationCheckStatusEl.textContent = isLocationCheckEnabled ? 'ENABLED' : 'DISABLED';
             locationCheckStatusEl.className = `font-bold text-lg ${isLocationCheckEnabled ? 'text-green-400' : 'text-red-400'}`;
         } else {
-             phoneStatusEl.textContent = 'DISABLED';
-             phoneStatusEl.className = 'font-bold text-lg text-red-400';
              locationCheckStatusEl.textContent = 'DISABLED';
              locationCheckStatusEl.className = 'font-bold text-lg text-red-400';
         }
     } catch(e) { console.error("Error loading settings", e)}
 
-    phoneToggleBtn.addEventListener('click', () => handleToggle(phoneToggleBtn, phoneStatusEl, 'enablePhoneCollection', 'ENABLED', 'DISABLED'));
     locationCheckToggleBtn.addEventListener('click', () => handleToggle(locationCheckToggleBtn, locationCheckStatusEl, 'enableLocationCheck', 'ENABLED', 'DISABLED'));
 
-    // Geolocation logic
     const updateLocationUI = (locationData) => {
         if (locationData && locationData.latitude) {
             locationCoordsEl.textContent = `Saved: Lat ${locationData.latitude.toFixed(4)}, Lon ${locationData.longitude.toFixed(4)}`;
@@ -835,13 +895,11 @@ async function initSiteSettings(db) {
     });
 }
 
-
-// --- STUDENT: QR CODE SCANNER (with Geolocation) ---
-function initQrScanner(uid, db) {
+// --- STUDENT: QR CODE SCANNER ---
+function initQrScanner(userDocId, db) {
     const scanStatusEl = document.getElementById('scan-status');
     if (!scanStatusEl) return;
 
-    // The Html5Qrcode object is now available globally from the script tag in scanner.html
     const html5QrCode = new Html5Qrcode("qr-reader");
 
     const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
@@ -851,14 +909,12 @@ function initQrScanner(uid, db) {
         scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-yellow-400';
 
         try {
-            // Check if location check is enabled by the admin
             const settingsRef = doc(db, "settings", "config");
             const settingsDoc = await getDoc(settingsRef);
             const locationCheckEnabled = settingsDoc.exists() && settingsDoc.data().enableLocationCheck === true;
 
             if (locationCheckEnabled) {
                 scanStatusEl.textContent = "Getting your location...";
-                // 1. Get student's current location
                 const studentPosition = await new Promise((resolve, reject) => {
                     if (!navigator.geolocation) reject(new Error("Geolocation not supported."));
                     navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
@@ -866,28 +922,25 @@ function initQrScanner(uid, db) {
                 
                 const { latitude: studentLat, longitude: studentLon } = studentPosition.coords;
 
-                // 2. Get classroom location from DB
                 const locationRef = doc(db, "settings", "location");
                 const locationDoc = await getDoc(locationRef);
                 if (!locationDoc.exists()) throw new Error("Classroom location not set by admin.");
                 
                 const { latitude: classLat, longitude: classLon } = locationDoc.data();
 
-                // 3. Check distance
                 const distance = calculateDistance(studentLat, studentLon, classLat, classLon);
-                const ALLOWED_RADIUS_METERS = 100; // Increased radius for better tolerance
+                const ALLOWED_RADIUS_METERS = 100;
                 
                 if (distance > ALLOWED_RADIUS_METERS) {
                     throw new Error(`You are too far from the classroom (${Math.round(distance)}m away).`);
                 }
             }
 
-            // 4. If location check passed (or was disabled), proceed with attendance marking
             scanStatusEl.textContent = "Verifying QR code...";
             const token = decodedText;
             const today = new Date().toISOString().split('T')[0];
 
-            const existingAttendanceRef = doc(db, `users/${uid}/attendance`, today);
+            const existingAttendanceRef = doc(db, `users/${userDocId}/attendance`, today);
             const existingAttendanceSnap = await getDoc(existingAttendanceRef);
             if (existingAttendanceSnap.exists()) {
                 throw new Error("Attendance already marked for today.");
@@ -900,17 +953,15 @@ function initQrScanner(uid, db) {
                 throw new Error("Invalid or expired QR code.");
             }
 
-            const userDoc = await getDoc(doc(db, "users", uid));
+            const userDoc = await getDoc(doc(db, "users", userDocId));
             if (!userDoc.exists()) throw new Error("User profile not found.");
             
             const { name, rollNo } = userDoc.data();
             
-            // Mark attendance in the student's personal record
-            await setDoc(doc(db, `users/${uid}/attendance`, today), { status: "Present", date: today });
+            await setDoc(doc(db, `users/${userDocId}/attendance`, today), { status: "Present", date: today });
 
-            // Now, also create the central log for the admin panel
             await addDoc(collection(db, "attendance_logs"), {
-                studentId: uid, studentName: name, rollNo, date: today, status: "Present", markedAt: new Date()
+                studentId: userDocId, studentName: name, rollNo, date: today, status: "Present", markedAt: new Date()
             });
             
             scanStatusEl.textContent = "Success! Attendance marked.";
@@ -918,7 +969,6 @@ function initQrScanner(uid, db) {
             playBeep();
 
         } catch (error) {
-            console.error("Attendance marking failed:", error);
             scanStatusEl.textContent = error.message;
             scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-red-400';
         }
@@ -927,12 +977,10 @@ function initQrScanner(uid, db) {
     const config = { fps: 10, qrbox: { width: 250, height: 250 } };
     html5QrCode.start({ facingMode: "environment" }, config, qrCodeSuccessCallback)
         .catch(err => {
-            console.error("Could not start camera:", err);
             scanStatusEl.textContent = "Could not start camera. Please allow permission.";
             scanStatusEl.className = 'mt-4 h-8 text-lg font-semibold text-red-400';
         });
 }
-
 
 // --- HELPER / UTILITY FUNCTIONS ---
 function playBeep() {
@@ -967,7 +1015,6 @@ function loadSegregatedAttendanceHistory(db, date) {
 
     const q = query(collection(db, "attendance_logs"), where("date", "==", date));
     
-    // Return the unsubscribe function to be managed
     return onSnapshot(q, async (snapshot) => {
         containers.forEach(c => {
             if(c) c.innerHTML = '<p class="text-gray-500 text-sm text-center">No records for this date.</p>';
@@ -981,28 +1028,23 @@ function loadSegregatedAttendanceHistory(db, date) {
             usersMap.set(doc.id, doc.data());
         });
 
-        let recordsA = [];
-        let recordsB = [];
-        let recordsAdvanced = [];
+        let recordsA = [], recordsB = [], recordsAdvanced = [];
 
         snapshot.forEach(logDoc => {
             const record = logDoc.data();
             const userData = usersMap.get(record.studentId);
             if (userData) {
                 const recordWithUserData = { ...record, ...userData };
-                if (userData.batch === 'Advanced') {
-                    recordsAdvanced.push(recordWithUserData);
-                } else if (userData.division === 'A') {
-                    recordsA.push(recordWithUserData);
-                } else if (userData.division === 'B') {
-                    recordsB.push(recordWithUserData);
-                }
+                if (userData.batch === 'Advanced') recordsAdvanced.push(recordWithUserData);
+                else if (userData.division === 'A') recordsA.push(recordWithUserData);
+                else if (userData.division === 'B') recordsB.push(recordWithUserData);
             }
         });
 
-        recordsA.sort((a, b) => a.name.localeCompare(b.name));
-        recordsB.sort((a, b) => a.name.localeCompare(b.name));
-        recordsAdvanced.sort((a, b) => a.name.localeCompare(b.name));
+        const sortByName = (a, b) => a.name.localeCompare(b.name);
+        recordsA.sort(sortByName);
+        recordsB.sort(sortByName);
+        recordsAdvanced.sort(sortByName);
 
         const renderList = (container, records) => {
             if (records.length === 0) return;
@@ -1028,10 +1070,10 @@ function loadSegregatedAttendanceHistory(db, date) {
     });
 }
 
-async function loadStudentAttendance(uid, db) {
+async function loadStudentAttendance(userDocId, db) {
     const attendanceRecordEl = document.getElementById('attendance-record');
     if (!attendanceRecordEl) return;
-    const attendanceCol = collection(db, `users/${uid}/attendance`);
+    const attendanceCol = collection(db, `users/${userDocId}/attendance`);
     const q = query(attendanceCol, orderBy("date", "desc"));
     const snapshot = await getDocs(q);
 
@@ -1046,7 +1088,7 @@ async function loadStudentAttendance(uid, db) {
         const recordEl = document.createElement('div');
         recordEl.className = 'flex justify-between items-center bg-gray-800 p-2 rounded';
         const statusColor = record.status === 'Present' ? 'text-green-400' : 'text-red-400';
-        recordEl.innerHTML = `<span>${record.date}</span><span class="font-bold ${statusColor}">${record.status}</span>`;
+        recordEl.innerHTML = `<span>${formatDateDDMMYYYY(record.date)}</span><span class="font-bold ${statusColor}">${record.status}</span>`;
         attendanceRecordEl.appendChild(recordEl);
     });
 }
@@ -1055,13 +1097,9 @@ async function loadStudentMaterials(batch, db) {
     const materialsList = document.getElementById('materials-list');
     if (!materialsList) return;
 
-    let q;
+    let q = query(collection(db, "materials"), where("targetBatch", "==", "Basic"));
     if (batch === 'Advanced') {
-        // Advanced students see 'Advanced' and 'Basic' materials
         q = query(collection(db, "materials"), where("targetBatch", "in", ["Advanced", "Basic"]));
-    } else {
-        // Basic students only see 'Basic' materials
-        q = query(collection(db, "materials"), where("targetBatch", "==", "Basic"));
     }
     
     const querySnapshot = await getDocs(q);
@@ -1072,24 +1110,18 @@ async function loadStudentMaterials(batch, db) {
         return;
     }
 
-    const materials = [];
-    querySnapshot.forEach((doc) => {
-        materials.push(doc.data());
-    });
+    const materials = querySnapshot.docs.map(doc => doc.data());
     materials.sort((a, b) => b.uploadedAt.seconds - a.uploadedAt.seconds);
 
-    materials.forEach((material) => {
-        const materialCard = `
-            <div class="bg-gray-800 p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div class="flex-grow">
-                    <h3 class="font-bold text-lg text-blue-300">${material.name}</h3>
-                    <p class="text-sm text-gray-500">Uploaded: ${new Date(material.uploadedAt.seconds * 1000).toLocaleDateString()}</p>
-                </div>
-                <a href="${material.url}" target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto text-center bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition">Download</a>
+    materialsList.innerHTML = materials.map(material => `
+        <div class="bg-gray-800 p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="flex-grow">
+                <h3 class="font-bold text-lg text-blue-300">${material.name}</h3>
+                <p class="text-sm text-gray-500">Uploaded: ${new Date(material.uploadedAt.seconds * 1000).toLocaleDateString()}</p>
             </div>
-        `;
-        materialsList.innerHTML += materialCard;
-    });
+            <a href="${material.url}" target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto text-center bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition">Download</a>
+        </div>
+    `).join('');
 }
 
 async function loadAdminMaterials(db) {
@@ -1118,7 +1150,7 @@ async function loadAdminMaterials(db) {
         materialsList.appendChild(materialEl);
     });
 
-    document.querySelectorAll('.delete-btn').forEach(button => {
+    materialsList.querySelectorAll('.delete-btn').forEach(button => {
         button.addEventListener('click', async (e) => {
             const docId = e.target.dataset.id;
             if (confirm('Are you sure you want to delete this material record?')) {
@@ -1126,7 +1158,6 @@ async function loadAdminMaterials(db) {
                     await deleteDoc(doc(db, "materials", docId));
                     await loadAdminMaterials(db);
                 } catch (error) {
-                    console.error("Delete error: ", error);
                     alert("Could not delete material record.");
                 }
             }
@@ -1134,10 +1165,9 @@ async function loadAdminMaterials(db) {
     });
 }
 
-// Geolocation Distance Calculator
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371e3; // metres
-    const φ1 = lat1 * Math.PI/180; // φ, λ in radians
+    const φ1 = lat1 * Math.PI/180;
     const φ2 = lat2 * Math.PI/180;
     const Δφ = (lat2-lat1) * Math.PI/180;
     const Δλ = (lon2-lon1) * Math.PI/180;
@@ -1147,5 +1177,5 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
               Math.sin(Δλ/2) * Math.sin(Δλ/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 
-    return R * c; // in metres
+    return R * c;
 }

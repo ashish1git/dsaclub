@@ -97,10 +97,7 @@
                     </div>
                     <div class="flex gap-4 mb-4">
                         <button id="export-attendance-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition text-sm">Export All Attendance</button>
-                        <button id="import-attendance-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition text-sm">Import Attendance</button>
-                        <input type="file" id="import-attendance-input" class="hidden" accept=".xlsx, .xls">
                     </div>
-                    <p id="import-attendance-status" class="text-center h-6 mb-4"></p>
                      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
                             <h3 class="font-bold text-lg mb-2 text-center text-gray-300">Division A</h3>
@@ -125,16 +122,6 @@
                 <div class="space-y-4">
                     <div class="flex items-center justify-between bg-gray-800 p-4 rounded-lg">
                         <div>
-                            <h3 class="font-semibold text-white">Enable Phone Number Collection</h3>
-                            <p class="text-sm text-gray-400">Prompt students to enter their WhatsApp number.</p>
-                        </div>
-                        <div class="flex items-center gap-4">
-                            <span id="setting-status-phone" class="font-bold text-lg"></span>
-                            <button id="toggle-phone-collection-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition">Toggle</button>
-                        </div>
-                    </div>
-                    <div class="flex items-center justify-between bg-gray-800 p-4 rounded-lg">
-                        <div>
                             <h3 class="font-semibold text-white">Set Classroom Location</h3>
                             <p class="text-sm text-gray-400">Click to save your current location for QR attendance.</p>
                             <p id="location-coords" class="text-xs text-gray-500 mt-1"></p>
@@ -157,6 +144,7 @@
             <div class="main-container p-6 rounded-lg">
                 <div class="flex flex-col sm:flex-row justify-between sm:items-center mb-4 gap-4">
                     <h2 class="text-xl sm:text-2xl font-bold text-blue-300">Registered Students</h2>
+                    <!-- CORRECTED: Added back the import buttons and status element -->
                     <div class="flex gap-4">
                         <button id="export-users-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition">Export Users (XLSX)</button>
                         <button id="import-users-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition">Import Users (XLSX)</button>
