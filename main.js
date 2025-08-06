@@ -190,6 +190,7 @@ function setupAuthForms() {
                     role: 'student'
                 });
                 // onAuthStateChanged will handle the redirect
+                window.location.href = 'dashboard.html';
             } catch (error) {
                 errorEl.textContent = error.message.replace('Firebase: ', '');
                 button.classList.remove('btn-loading');
