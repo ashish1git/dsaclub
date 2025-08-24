@@ -1776,11 +1776,8 @@ function initQrScanner() {
             aspectRatio: 1.777778, // Adjusted aspect ratio for a wider view
             supportedScanFormats: [Html5QrcodeSupportedFormats.QR_CODE],
             rememberLastUsedCamera: true,
-            // Use an environment camera
             // Use an optional config object to force the camera
             // selection logic to choose the rear camera.
-            // This is a more reliable way to ensure the back camera is used.
-            defaultCrosshairMode: Html5Qrcode.Html5QrcodeScanner.SCAN_TYPE_CAMERA_IMAGE,
             videoConstraints: {
                 facingMode: "environment" // Force back camera
             }
