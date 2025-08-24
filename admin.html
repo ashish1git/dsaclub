@@ -58,6 +58,13 @@
         <div id="attendance-section" class="tab-content hidden">
              <div class="main-container p-6 rounded-lg mb-8">
                 <h2 class="text-xl sm:text-2xl font-bold mb-4 text-blue-300">Automated Attendance</h2>
+                <!-- MODIFIED: Responsive layout for time slot inputs -->
+                <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 mb-6">
+                    <label class="form-label mb-0 sm:w-auto w-full">Session Time Slot:</label>
+                    <input type="time" id="start-time-auto" class="form-input flex-grow" value="12:50" required>
+                    <span class="text-gray-400">to</span>
+                    <input type="time" id="end-time-auto" class="form-input flex-grow" value="15:00" required>
+                </div>
                 <button id="start-session-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition">Start 5-Minute Attendance Session</button>
             </div>
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -72,6 +79,13 @@
                         <div class="mb-4">
                             <label for="attendance-date" class="form-label">Date</label>
                             <input type="date" id="attendance-date" class="form-input" required>
+                        </div>
+                        <!-- MODIFIED: Responsive layout for time slot inputs -->
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 mb-4">
+                            <label class="form-label mb-0 sm:w-auto w-full">Session Time Slot:</label>
+                            <input type="time" id="start-time-manual" class="form-input flex-grow" value="12:50" required>
+                            <span class="text-gray-400">to</span>
+                            <input type="time" id="end-time-manual" class="form-input flex-grow" value="15:00" required>
                         </div>
                         <div class="mb-6">
                             <label for="attendance-status" class="form-label">Status</label>
@@ -98,7 +112,7 @@
                     <div class="flex gap-4 mb-4">
                         <button id="export-attendance-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition text-sm">Export All Attendance</button>
                     </div>
-                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
                             <h3 class="font-bold text-lg mb-2 text-center text-gray-300">Division A</h3>
                             <div id="attendance-history-A" class="attendance-history-list"></div>
@@ -107,7 +121,7 @@
                             <h3 class="font-bold text-lg mb-2 text-center text-gray-300">Division B</h3>
                             <div id="attendance-history-B" class="attendance-history-list"></div>
                         </div>
-                         <div>
+                        <div>
                             <h3 class="font-bold text-lg mb-2 text-center text-gray-300">Advanced Batch</h3>
                             <div id="attendance-history-Advanced" class="attendance-history-list"></div>
                         </div>
@@ -144,8 +158,9 @@
             <div class="main-container p-6 rounded-lg">
                 <div class="flex flex-col sm:flex-row justify-between sm:items-center mb-4 gap-4">
                     <h2 class="text-xl sm:text-2xl font-bold text-blue-300">Registered Students</h2>
-                    <!-- CORRECTED: Added back the import buttons and status element -->
                     <div class="flex gap-4">
+                        <!-- NEW: Button to open the Create User modal -->
+                        <button id="create-user-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition">Create New Student</button>
                         <button id="export-users-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition">Export Users (XLSX)</button>
                         <button id="import-users-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition">Import Users (XLSX)</button>
                         <input type="file" id="import-users-input" class="hidden" accept=".xlsx, .xls">
@@ -157,6 +172,60 @@
         </div>
     </main>
     
+    <!-- Modal for creating new student account -->
+    <div id="create-user-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden z-50">
+        <div class="main-container p-8 rounded-lg text-center w-full max-w-2xl mx-4">
+            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-4">
+                <h2 class="text-xl font-bold text-blue-300">Create New Student Account</h2>
+                <button id="close-create-user-modal-btn" class="text-gray-400 hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <form id="create-user-form" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-left">
+                <div>
+                    <label for="create-name" class="form-label">Full Name</label>
+                    <input type="text" id="create-name" class="form-input" placeholder="Student's Full Name" required>
+                </div>
+                <div>
+                    <label for="create-email" class="form-label">Email Address</label>
+                    <input type="email" id="create-email" class="form-input" placeholder="student@example.com" required>
+                </div>
+                <div>
+                    <label for="create-roll" class="form-label">Roll No</label>
+                    <input type="text" id="create-roll" class="form-input" placeholder="e.g., 25" required>
+                </div>
+                <div>
+                    <label for="create-moodle" class="form-label">Moodle ID</label>
+                    <input type="text" id="create-moodle" class="form-input" placeholder="e.g., 23106001" required>
+                </div>
+                 <div>
+                    <label for="create-division" class="form-label">Division</label>
+                    <select id="create-division" class="form-input" required>
+                        <option value="A">Division A</option>
+                        <option value="B">Division B</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="create-batch" class="form-label">Batch</label>
+                    <select id="create-batch" class="form-input" required>
+                        <option value="Basic">Basic</option>
+                        <option value="Advanced">Advanced</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label for="create-password" class="form-label">Password</label>
+                    <input type="password" id="create-password" class="form-input" placeholder="Minimum 6 characters" required>
+                </div>
+                <div class="md:col-span-2 mt-4 text-center">
+                    <button type="submit" id="create-user-button" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition">Create Account</button>
+                    <p id="create-user-status" class="text-red-400 text-center mt-4 h-4"></p>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="qr-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden z-50">
         <div class="main-container p-8 rounded-lg text-center">
             <h2 class="text-2xl font-bold text-white mb-4">Scan for Attendance</h2>
@@ -165,6 +234,16 @@
             <button id="close-qr-modal" class="mt-6 bg-red-600 text-white font-bold py-2 px-6 rounded-lg">Close</button>
         </div>
     </div>
+    
+    <div id="custom-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden z-50 transition-opacity duration-300">
+    <div class="bg-gray-900 p-8 rounded-lg shadow-xl text-center w-full max-w-sm mx-4 border border-gray-700">
+        <h3 id="modal-title" class="text-xl font-bold text-blue-300 mb-4"></h3>
+        <p id="modal-message" class="text-gray-300 mb-6"></p>
+        <div id="modal-buttons" class="flex justify-center space-x-4">
+            <!-- Buttons will be injected here by JavaScript -->
+        </div>
+    </div>
+</div>
 
     <script type="module" src="main.js"></script>
 </body>

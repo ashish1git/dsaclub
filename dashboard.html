@@ -10,45 +10,111 @@
 </head>
 <body class="min-h-screen">
     <canvas id="matrix-canvas"></canvas>
-    <nav class="main-container flex justify-between items-center p-4 shadow-lg sticky top-0 z-10">
-        <h1 class="text-lg sm:text-xl font-bold text-blue-300">Student Dashboard</h1>
-        <button id="logout-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition text-sm sm:text-base">Logout</button>
-    </nav>
     
-    <main class="w-full max-w-7xl p-4 sm:p-8 mx-auto my-8">
-        <!-- Welcome and Phone Number Prompt Section -->
-        <div class="main-container p-6 rounded-xl shadow-2xl mb-8">
-            <!-- This container will be populated by main.js with a welcome message 
-                 and a prompt for a phone number if needed. -->
-            <div id="welcome-message" class="text-center"></div>
+    <!-- Sidebar for mobile and a toggle for desktop -->
+    <aside id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-gray-900 bg-opacity-90 backdrop-filter backdrop-blur-lg z-50 transform -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out border-r border-gray-700">
+        <div class="flex items-center justify-between p-4 border-b border-gray-700">
+            <h2 class="text-xl font-bold font-code text-blue-300">Navigation</h2>
+            <button id="close-sidebar-btn" class="text-gray-400 hover:text-white lg:hidden">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
         </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <!-- Main Content: Materials -->
-            <div class="main-container lg:col-span-2 p-6 rounded-xl shadow-2xl">
-                <h2 class="text-xl sm:text-2xl font-bold text-center mb-6 text-blue-300">Course Materials</h2>
-                <div id="materials-list" class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                    <p class="text-gray-400 col-span-full text-center">Loading materials...</p>
+        <div class="p-4 space-y-6">
+            <!-- Navigation Links -->
+            <nav class="flex flex-col gap-2">
+                <button data-target="materials-section" class="sidebar-nav-btn active">Course Materials</button>
+                <button data-target="problems-section" class="sidebar-nav-btn">Problem Tracker</button>
+                <button data-target="records-section" class="sidebar-nav-btn">Attendance</button>
+            </nav>
+            
+            <hr class="border-gray-700">
+            
+            <!-- Quick Stats Section -->
+            <div>
+                <h3 class="text-lg font-bold text-center mb-4 text-gray-300">Quick Stats</h3>
+                <div class="grid grid-cols-2 gap-4 text-center">
+                    <div class="bg-gray-800 p-4 rounded-lg">
+                        <p id="attendance-stat" class="text-2xl font-bold text-green-400">--%</p>
+                        <p class="text-sm text-gray-400">Attendance</p>
+                    </div>
+                    <div class="bg-gray-800 p-4 rounded-lg">
+                        <p id="materials-stat" class="text-2xl font-bold text-yellow-400">--</p>
+                        <p class="text-sm text-gray-400">Materials</p>
+                    </div>
                 </div>
             </div>
+            
+            <hr class="border-gray-700">
 
-            <!-- Sidebar: Attendance -->
-            <div class="main-container p-6 rounded-xl shadow-2xl space-y-6">
-                <div>
-                    <h2 class="text-xl font-bold text-center mb-4 text-blue-300">Attendance</h2>
-                    <a href="scanner.html" id="scan-qr-btn" class="w-full block text-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition">Scan QR for Attendance</a>
-                    <!-- Location notice from the other code block -->
-                    <p class="text-xs text-center mt-2 text-gray-400">Note: Location access is required for QR scanning.</p>
+        </div>
+    </aside>
+
+    <!-- Overlay for the background when sidebar is open -->
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden transition-opacity duration-300"></div>
+
+    <!-- Main Content Wrapper -->
+    <div id="content-wrapper" class="transition-transform duration-300 ease-in-out lg:ml-64">
+        <!-- Main Navigation Bar -->
+        <nav class="main-container flex justify-between items-center p-4 shadow-lg sticky top-0 z-10">
+            <div class="flex items-center gap-4">
+                <button id="open-sidebar-btn" class="text-gray-400 hover:text-white lg:hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
+                <h1 class="text-lg sm:text-xl font-bold text-blue-300">Student Dashboard</h1>
+            </div>
+            <button id="logout-button" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition text-sm sm:text-base">Logout</button>
+        </nav>
+        
+        <main class="w-full max-w-7xl p-4 sm:p-8 mx-auto my-8">
+            <!-- Welcome Message Section -->
+            <div class="main-container p-6 rounded-xl shadow-2xl mb-8">
+                <div id="welcome-message" class="text-center"></div>
+            </div>
+
+            <!-- Tabbed Content Areas -->
+            <div id="main-content-tabs">
+                <div id="materials-section" class="main-container p-6 rounded-xl shadow-2xl tab-content">
+                    <h2 class="text-xl sm:text-2xl font-bold text-center mb-6 text-blue-300">Course Materials</h2>
+                    <!-- MODIFIED: Changed layout for a more compact list view -->
+                    <div id="materials-list" class="space-y-4">
+                        <p class="text-gray-400 col-span-full text-center">Loading materials...</p>
+                    </div>
                 </div>
-                <div class="border-t border-gray-700 pt-6">
-                    <h3 class="text-lg font-bold text-center mb-4 text-gray-300">Your Records</h3>
+
+                <div id="problems-section" class="main-container p-6 rounded-xl shadow-2xl tab-content hidden">
+                    <h2 class="text-xl sm:text-2xl font-bold text-center mb-6 text-blue-300">Problem Tracker</h2>
+                    <div class="flex flex-col sm:flex-row justify-center items-center mb-4 gap-4">
+                        <select id="problem-source-select" class="form-input w-full sm:w-auto">
+                            <option value="LeetCode">LeetCode</option>
+                            <option value="HackerRank">HackerRank</option>
+                            <option value="GeeksforGeeks">GeeksforGeeks</option>
+                            <option value="Other">Other</option>
+                        </select>
+                        <input type="text" id="problem-link-input" class="form-input w-full sm:flex-grow" placeholder="Paste problem URL here...">
+                        <button id="add-problem-btn" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">Add</button>
+                    </div>
+                    <p id="problem-tracker-status" class="text-center text-sm h-4 mb-4"></p>
+                    <div id="problem-list" class="space-y-4">
+                        <p class="text-gray-400 text-center">No problems tracked yet.</p>
+                    </div>
+                </div>
+
+                <div id="records-section" class="main-container p-6 rounded-xl shadow-2xl tab-content hidden">
+                    <h2 class="text-xl sm:text-2xl font-bold text-center mb-6 text-blue-300">Your Records</h2>
+                    <a href="scanner.html" id="scan-qr-btn" class="w-full block text-center bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition mb-4">Scan QR for Attendance</a>
+                    <p class="text-xs text-center mt-2 text-gray-400 mb-4">Note: Location access is required for QR scanning.</p>
                     <div id="attendance-record" class="space-y-2 text-gray-300 h-72 overflow-y-auto pr-2">
+                        <!-- MODIFIED: List items now include time and duration -->
                         <p class="text-gray-400 text-center">Loading attendance...</p>
                     </div>
                 </div>
             </div>
-        </div>
-    </main>
+        </main>
+    </div>
 
     <script type="module" src="main.js"></script>
 </body>

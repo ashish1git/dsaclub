@@ -31,6 +31,10 @@ body {
 .form-input:focus {
     outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
 }
+/* New CSS for show password checkbox */
+input[type="checkbox"] {
+    accent-color: #3b82f6;
+}
 
 /* Loading Animation for Buttons */
 .btn-loading {
@@ -44,7 +48,7 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Enhanced Tab Styles */
+/* Enhanced Tab & Sidebar Styles */
 .tab-btn {
     padding: 0.75rem 1.5rem; font-weight: 600; color: #9ca3af;
     border-bottom: 3px solid transparent; transition: all 0.3s ease-in-out;
@@ -64,8 +68,22 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 
+.sidebar-nav-btn {
+    width: 100%; text-align: left; padding: 0.75rem 1rem; border-radius: 0.5rem;
+    color: #d1d5db; font-weight: 500; transition: all 0.2s ease-in-out;
+}
+.sidebar-nav-btn:hover {
+    background-color: rgba(55, 65, 81, 0.5);
+    color: #e5e7eb;
+}
+.sidebar-nav-btn.active {
+    background-color: #3b82f6;
+    color: #ffffff;
+    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.4), 0 2px 4px -1px rgba(59, 130, 246, 0.2);
+}
+
 /* Attendance & User List Styles */
-.attendance-history-list, #manage-materials-list, #user-list {
+.attendance-history-list, #manage-materials-list, #user-list, #attendance-record {
     background-color: rgba(31, 41, 55, 0.5);
     border-radius: 0.5rem;
     padding: 1rem;
@@ -75,18 +93,18 @@ body {
 }
 
 /* Custom Scrollbar Styles */
-.attendance-history-list::-webkit-scrollbar, #manage-materials-list::-webkit-scrollbar, #user-list::-webkit-scrollbar {
+.attendance-history-list::-webkit-scrollbar, #manage-materials-list::-webkit-scrollbar, #user-list::-webkit-scrollbar, #attendance-record::-webkit-scrollbar, #problem-list::-webkit-scrollbar {
     width: 8px;
 }
-.attendance-history-list::-webkit-scrollbar-track, #manage-materials-list::-webkit-scrollbar-track, #user-list::-webkit-scrollbar-track {
+.attendance-history-list::-webkit-scrollbar-track, #manage-materials-list::-webkit-scrollbar-track, #user-list::-webkit-scrollbar-track, #attendance-record::-webkit-scrollbar-track, #problem-list::-webkit-scrollbar-track {
     background: transparent;
 }
-.attendance-history-list::-webkit-scrollbar-thumb, #manage-materials-list::-webkit-scrollbar-thumb, #user-list::-webkit-scrollbar-thumb {
+.attendance-history-list::-webkit-scrollbar-thumb, #manage-materials-list::-webkit-scrollbar-thumb, #user-list::-webkit-scrollbar-thumb, #attendance-record::-webkit-scrollbar-thumb, #problem-list::-webkit-scrollbar-thumb {
     background-color: #4b5563;
     border-radius: 10px;
     border: 2px solid transparent;
     background-clip: content-box;
 }
-.attendance-history-list::-webkit-scrollbar-thumb:hover, #manage-materials-list::-webkit-scrollbar-thumb:hover, #user-list::-webkit-scrollbar-thumb:hover {
+.attendance-history-list::-webkit-scrollbar-thumb:hover, #manage-materials-list::-webkit-scrollbar-thumb:hover, #user-list::-webkit-scrollbar-thumb:hover, #attendance-record::-webkit-scrollbar-thumb:hover, #problem-list::-webkit-scrollbar-thumb:hover {
     background-color: #6b7280;
 }
