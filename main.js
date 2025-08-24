@@ -1769,11 +1769,26 @@ function initQrScanner() {
     };
     
     // Start the QR scanner, but disable the 'scan file' button
-    html5QrCodeScanner = new Html5QrcodeScanner("reader", { 
-        fps: 10, 
-        qrbox: { width: 250, height: 250 },
-        // This parameter removes the file-based scanning option
-        disableFlip: false 
-    }, false);
-    html5QrCodeScanner.render(onScanSuccess, onScanFailure);
+    try {
+        html5QrCodeScanner = new Html5QrcodeScanner("reader", { 
+            fps: 15, // Increased FPS for faster scanning
+            qrbox: { width: 300, height: 300 }, // Optimized QR box size
+            aspectRatio: 1.777778, // Adjusted aspect ratio for a wider view
+            supportedScanFormats: [Html5QrcodeSupportedFormats.QR_CODE],
+            rememberLastUsedCamera: true,
+            // Use an environment camera
+            // Use an optional config object to force the camera
+            // selection logic to choose the rear camera.
+            // This is a more reliable way to ensure the back camera is used.
+            defaultCrosshairMode: Html5Qrcode.Html5QrcodeScanner.SCAN_TYPE_CAMERA_IMAGE,
+            videoConstraints: {
+                facingMode: "environment" // Force back camera
+            }
+        }, false);
+        html5QrCodeScanner.render(onScanSuccess, onScanFailure);
+    } catch(error) {
+        console.error("Failed to start QR scanner:", error);
+        scanStatusEl.textContent = "Error: Failed to start camera. Check your permissions.";
+        scanStatusEl.className = 'mt-4 text-center text-lg font-semibold text-red-400';
+    }
 }
