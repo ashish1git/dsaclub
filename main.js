@@ -23,7 +23,7 @@ import {
     onSnapshot
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// The Html5Qrcode and qrcode.js libraries are expected to be loaded via a <script> tag in the HTML.
+// The Html5QrcodeScanner library is expected to be loaded via a <script> tag in the HTML.
 // No import statement is needed here.
 
 // Your specific Firebase configuration.
@@ -41,6 +41,8 @@ const firebaseConfig = {
 let app, auth, db;
 let unsubscribeFromHistory; // Global variable to hold the unsubscribe function for attendance history listener
 let currentModalPromiseResolve;
+let html5QrCodeScanner;
+let currentUserProfile;
 
 try {
     app = initializeApp(firebaseConfig);
@@ -243,28 +245,29 @@ window.addEventListener('load', () => {
     onAuthStateChanged(auth, async (user) => {
         const currentPage = window.location.pathname.split("/").pop();
         if (user) {
-            const userProfile = await getUserProfile(user.uid);
-
-            if (userProfile && userProfile.role === 'admin') {
+            currentUserProfile = await getUserProfile(user.uid);
+            if (currentUserProfile && currentUserProfile.role === 'admin') {
                 if (currentPage !== 'admin.html') { window.location.href = 'admin.html'; return; }
-            } else if (userProfile) {
+                initAdminDashboardLogic(db);
+            } else if (currentUserProfile && currentUserProfile.role === 'student') {
                 if (currentPage !== 'dashboard.html' && currentPage !== 'scanner.html') { window.location.href = 'dashboard.html'; return; }
+                if (currentPage === 'dashboard.html') initStudentDashboard(currentUserProfile, db);
+                else if (currentPage === 'scanner.html') initQrScanner();
             } else {
                 console.error("Logged in user has no profile. Logging out.");
                 await signOut(auth);
                 return;
-            }
-
-            if (userProfile) {
-                if (currentPage === 'dashboard.html') initStudentDashboard(userProfile, db);
-                else if (currentPage === 'admin.html') initAdminDashboardLogic(db);
-                // Removed the call to initQrScanner from admin.js
             }
         } else {
             const protectedPages = ['dashboard.html', 'admin.html', 'scanner.html'];
             if (protectedPages.includes(currentPage)) window.location.href = 'index.html';
         }
     });
+
+    const logoutButton = document.getElementById('logout-button');
+    if (logoutButton) {
+        logoutButton.addEventListener('click', async () => await signOut(auth));
+    }
 });
 
 // --- UI & ANIMATION ---
@@ -440,11 +443,6 @@ function setupAuthForms() {
                 button.disabled = false;
             }
         });
-    }
-
-    const logoutButton = document.getElementById('logout-button');
-    if (logoutButton) {
-        logoutButton.addEventListener('click', async () => await signOut(auth));
     }
 }
 
@@ -878,34 +876,17 @@ async function loadAdminMaterials(db) {
 
     materials.sort((a, b) => b.uploadedAt?.seconds - a.uploadedAt?.seconds);
 
-    materials.forEach((material) => {
-        const materialEl = document.createElement('div');
-        materialEl.className = 'bg-gray-800 p-3 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3';
-        materialEl.innerHTML = `
+    materialsList.innerHTML = materials.map(material => `
+        <div class="bg-gray-800 p-4 rounded-lg flex items-center justify-between gap-4">
             <div class="flex-grow">
-                <h4 class="font-semibold text-gray-200">${material.name}</h4>
-                <span class="text-xs text-blue-400 bg-gray-700 px-2 py-1 rounded-full">${material.targetBatch} Batch</span>
+                <h3 class="font-bold text-lg text-blue-300">${material.name}</h3>
+                <p class="text-sm text-gray-500">Uploaded: ${new Date(material.uploadedAt?.seconds * 1000).toLocaleDateString()}</p>
             </div>
-            <button data-id="${material.id}" class="delete-btn w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-sm">Delete</button>
-        `;
-        materialsList.appendChild(materialEl);
-    });
-
-    materialsList.querySelectorAll('.delete-btn').forEach(button => {
-        button.addEventListener('click', async (e) => {
-            const docId = e.target.dataset.id;
-            const confirmed = await showConfirm('Are you sure you want to delete this material record?');
-            if (confirmed) {
-                try {
-                    await deleteDoc(doc(db, "materials", docId));
-                    await loadAdminMaterials(db);
-                } catch (error) {
-                    showAlert("Could not delete material record.");
-                }
-            }
-        });
-    });
+            <a href="${material.url}" target="_blank" rel="noopener noreferrer" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition">Download</a>
+        </div>
+    `).join('');
 }
+
 
 // --- ADMIN: ATTENDANCE MANAGEMENT ---
 /**
@@ -1589,6 +1570,7 @@ function initQrCodeGeneration(db) {
     }
 }
 
+// --- ADMIN: SITE SETTINGS ---
 /**
  * Initializes site settings for admins, particularly location-based attendance.
  * @param {object} db - The Firestore database instance.
@@ -1664,4 +1646,134 @@ async function initSiteSettings(db) {
             setLocationBtn.textContent = "Set Current Location";
         }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     });
+}
+
+
+// --- QR SCANNER LOGIC ---
+function initQrScanner() {
+    const readerEl = document.getElementById('reader');
+    if (!readerEl) {
+        console.warn("HTML element with id='reader' not found. Skipping QR scanner initialization.");
+        return;
+    }
+    const scanStatusEl = document.getElementById('scan-status');
+    const onScanSuccess = async (decodedText, decodedResult) => {
+        if (html5QrCodeScanner) {
+            html5QrCodeScanner.pause();
+        }
+
+        scanStatusEl.textContent = 'Processing QR code...';
+        scanStatusEl.className = 'mt-4 text-center text-lg font-semibold text-yellow-400';
+
+        try {
+            const token = decodedText;
+            const sessionRef = doc(db, 'attendance_sessions', token);
+            const sessionSnap = await getDoc(sessionRef);
+
+            if (!sessionSnap.exists()) {
+                throw new Error("Invalid or expired QR code.");
+            }
+
+            const sessionData = sessionSnap.data();
+            const currentTime = new Date().getTime();
+            if (sessionData.expiresAt.toDate().getTime() < currentTime) {
+                await deleteDoc(sessionRef);
+                throw new Error("Attendance session has expired.");
+            }
+
+            // Check if location check is enabled
+            const settingsDoc = await getDoc(doc(db, "settings", "config"));
+            const enableLocationCheck = settingsDoc.exists() ? settingsDoc.data().enableLocationCheck : false;
+
+            if (enableLocationCheck) {
+                const locationDoc = await getDoc(doc(db, "settings", "location"));
+                if (!locationDoc.exists() || !locationDoc.data().latitude) {
+                    throw new Error("Classroom location is not set by admin. Please inform the administrator.");
+                }
+                const classroomLocation = locationDoc.data();
+
+                const position = await new Promise((resolve, reject) => {
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true });
+                    } else {
+                        reject(new Error("Geolocation is not supported by your browser."));
+                    }
+                });
+
+                const studentLat = position.coords.latitude;
+                const studentLon = position.coords.longitude;
+                const distance = calculateDistance(studentLat, studentLon, classroomLocation.latitude, classroomLocation.longitude);
+                
+                // Allow a small tolerance, e.g., 50 meters
+                const tolerance = 50;
+                if (distance > tolerance) {
+                    throw new Error("You are not in the classroom. Please mark attendance from the correct location.");
+                }
+            }
+
+            const attendanceDate = new Date().toISOString().split('T')[0];
+            const attendanceRef = doc(db, `users/${currentUserProfile.id}/attendance`, attendanceDate);
+            
+            await setDoc(attendanceRef, {
+                status: 'Present',
+                date: attendanceDate,
+                markedAt: new Date(),
+                startTime: sessionData.startTime,
+                endTime: sessionData.endTime,
+                durationInHours: sessionData.durationInHours
+            });
+
+            // Update the central attendance log
+            const logQuery = query(collection(db, "attendance_logs"), where("rollNo", "==", currentUserProfile.rollNo), where("date", "==", attendanceDate));
+            const logSnapshot = await getDocs(logQuery);
+            const logData = {
+                studentId: currentUserProfile.id,
+                studentName: currentUserProfile.name,
+                rollNo: currentUserProfile.rollNo,
+                moodleId: currentUserProfile.moodleId,
+                division: currentUserProfile.division,
+                batch: currentUserProfile.batch,
+                date: attendanceDate,
+                status: 'Present',
+                markedAt: new Date(),
+                durationInHours: sessionData.durationInHours
+            };
+
+            if (logSnapshot.empty) {
+                await addDoc(collection(db, "attendance_logs"), logData);
+            } else {
+                const logDocId = logSnapshot.docs[0].id;
+                await updateDoc(doc(db, "attendance_logs", logDocId), logData);
+            }
+
+            showAlert("Attendance marked successfully!", "Success");
+            scanStatusEl.textContent = 'Attendance marked!';
+            scanStatusEl.className = 'mt-4 text-center text-lg font-semibold text-green-400';
+            playBeep();
+            setTimeout(() => window.location.href = 'dashboard.html', 3000);
+
+        } catch (error) {
+            console.error("Attendance marking failed:", error);
+            showAlert(error.message, "Error");
+            scanStatusEl.textContent = 'Failed to mark attendance.';
+            scanStatusEl.className = 'mt-4 text-center text-lg font-semibold text-red-400';
+            if (html5QrCodeScanner) {
+                setTimeout(() => html5QrCodeScanner.resume(), 3000);
+            }
+        }
+    };
+
+    const onScanFailure = (error) => {
+        // Can be useful for debugging
+        // console.warn(`QR code scan error: ${error}`);
+    };
+    
+    // Start the QR scanner, but disable the 'scan file' button
+    html5QrCodeScanner = new Html5QrcodeScanner("reader", { 
+        fps: 10, 
+        qrbox: { width: 250, height: 250 },
+        // This parameter removes the file-based scanning option
+        disableFlip: false 
+    }, false);
+    html5QrCodeScanner.render(onScanSuccess, onScanFailure);
 }
