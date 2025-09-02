@@ -449,6 +449,45 @@ function setupAuthForms() {
 
 // --- STUDENT DASHBOARD ---
 /**
+ * Loads and displays announcements for the student's dashboard.
+ * @param {object} db - The Firestore database instance.
+ */
+function loadAnnouncements(db) {
+    const announcementsListEl = document.getElementById('announcements-list');
+    if (!announcementsListEl || !currentUserProfile) return;
+
+    let q;
+    if (currentUserProfile.batch === 'Basic') {
+        q = query(collection(db, "announcements"), where("targetBatch", "in", ["All", "Basic"]));
+    } else {
+        q = query(collection(db, "announcements"), where("targetBatch", "in", ["All", "Advanced"]));
+    }
+    
+    onSnapshot(q, (snapshot) => {
+        announcementsListEl.innerHTML = '';
+        if (snapshot.empty) {
+            announcementsListEl.innerHTML = '<p class="text-gray-400 text-center">No announcements yet.</p>';
+            return;
+        }
+
+        const announcements = snapshot.docs.map(doc => doc.data());
+        announcements.sort((a, b) => b.publishedAt?.seconds - a.publishedAt?.seconds);
+
+        announcements.forEach(announcement => {
+            const item = document.createElement('div');
+            item.className = 'bg-gray-800 p-3 rounded-lg flex items-start justify-between gap-4 mb-2';
+            item.innerHTML = `
+                <div class="flex-grow">
+                    <p class="text-sm text-gray-300 mb-1">${announcement.message}</p>
+                    <p class="text-xs text-gray-500">Published: ${new Date(announcement.publishedAt?.seconds * 1000).toLocaleDateString()}</p>
+                </div>
+            `;
+            announcementsListEl.appendChild(item);
+        });
+    });
+}
+
+/**
  * Initializes the student dashboard UI and data loading.
  * @param {object} userData - The logged-in user's profile data.
  * @param {object} db - The Firestore database instance.
@@ -461,6 +500,7 @@ async function initStudentDashboard(userData, db) {
     }
     setupSidebarAndContent(userData, db);
     loadStudentStats(userData.id, userData.batch, db);
+    loadAnnouncements(db);
 }
 
 /**
@@ -554,9 +594,11 @@ async function loadStudentStats(userDocId, batch, db) {
 
     if (materialsStatEl) {
         try {
-            let q = query(collection(db, "materials"), where("targetBatch", "==", "Basic"));
+            let q;
             if (batch === 'Advanced') {
                 q = query(collection(db, "materials"), where("targetBatch", "in", ["Advanced", "Basic"]));
+            } else {
+                q = query(collection(db, "materials"), where("targetBatch", "==", "Basic"));
             }
             const materialsSnapshot = await getDocs(q);
             materialsStatEl.textContent = materialsSnapshot.docs.length;
@@ -682,30 +724,59 @@ function initProblemTracker(userDocId, db) {
 function loadStudentAttendance(userDocId, db) {
     const attendanceRecordEl = document.getElementById('attendance-record');
     if (!attendanceRecordEl) return;
-    const attendanceCol = collection(db, `users/${userDocId}/attendance`);
-    const q = query(attendanceCol);
+    
+    // Step 1: Get a reference to the student's attendance collection
+    const studentAttendanceCol = collection(db, `users/${userDocId}/attendance`);
+    // Step 2: Get a reference to the central attendance logs
+    const attendanceLogsCol = collection(db, "attendance_logs");
 
-    // Use onSnapshot for live updates
-    onSnapshot(q, (snapshot) => {
-        if (snapshot.empty) {
-            attendanceRecordEl.innerHTML = '<p class="text-gray-400 text-center">No attendance records found.</p>';
+    const renderAttendance = async () => {
+        // Fetch all class dates from the central log for the student's batch
+        const logsQuery = query(attendanceLogsCol, where("rollNo", "==", currentUserProfile.rollNo));
+        const logsSnapshot = await getDocs(logsQuery);
+
+        const allClassDates = new Set();
+        logsSnapshot.forEach(doc => {
+            const data = doc.data();
+            allClassDates.add(data.date);
+        });
+
+        // If there are no class dates in the log, we can't determine absences
+        if (allClassDates.size === 0) {
+            attendanceRecordEl.innerHTML = '<p class="text-gray-400 text-center">No attendance sessions found yet.</p>';
             return;
         }
 
-        const records = [];
-        snapshot.forEach(doc => {
-            records.push({ id: doc.id, ...doc.data() });
+        // Fetch the student's personal attendance records
+        const studentAttendanceSnapshot = await getDocs(studentAttendanceCol);
+        const studentRecords = new Map();
+        studentAttendanceSnapshot.forEach(doc => {
+            const data = doc.data();
+            studentRecords.set(data.date, data);
+        });
+
+        // Combine and render the data
+        const displayRecords = [];
+        allClassDates.forEach(date => {
+            const record = studentRecords.get(date);
+            if (record) {
+                displayRecords.push(record);
+            } else {
+                displayRecords.push({
+                    date: date,
+                    status: 'Absent',
+                    startTime: '',
+                    endTime: '',
+                    durationInHours: 0
+                });
+            }
         });
 
         // Sort in memory by date descending
-        records.sort((a, b) => {
-            const dateA = new Date(a.date);
-            const dateB = new Date(b.date);
-            return dateB - dateA;
-        });
+        displayRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
 
         attendanceRecordEl.innerHTML = '';
-        records.forEach(record => {
+        displayRecords.forEach(record => {
             const recordEl = document.createElement('div');
             recordEl.className = 'bg-gray-800 p-2 rounded text-sm mb-2';
             const statusColor = record.status === 'Present' ? 'text-green-400' : 'text-red-400';
@@ -724,7 +795,17 @@ function loadStudentAttendance(userDocId, db) {
             `;
             attendanceRecordEl.appendChild(recordEl);
         });
+    };
+
+    // Use a single onSnapshot listener on the student's attendance to trigger updates
+    // This is more efficient than listening to all logs
+    onSnapshot(studentAttendanceCol, (snapshot) => {
+        // Re-render the entire list whenever the student's attendance changes
+        renderAttendance();
     });
+
+    // Also call renderAttendance initially to display the data
+    renderAttendance();
 }
 
 /**
@@ -736,31 +817,45 @@ async function loadStudentMaterials(batch, db) {
     const materialsList = document.getElementById('materials-list');
     if (!materialsList) return;
 
-    let q = query(collection(db, "materials"), where("targetBatch", "==", "Basic"));
-    if (batch === 'Advanced') {
+    let q;
+    // Basic students only see Basic materials.
+    if (batch === 'Basic') {
+        q = query(collection(db, "materials"), where("targetBatch", "==", "Basic"));
+    // Advanced students see both Advanced and Basic materials.
+    } else if (batch === 'Advanced') {
         q = query(collection(db, "materials"), where("targetBatch", "in", ["Advanced", "Basic"]));
-    }
-    
-    const querySnapshot = await getDocs(q);
-    
-    materialsList.innerHTML = '';
-    if (querySnapshot.empty) {
+    } else {
+        // Handle cases where the batch is unknown or invalid
         materialsList.innerHTML = '<p class="text-gray-400 col-span-full text-center">No materials available for your batch yet.</p>';
+        console.warn("Invalid batch type for materials loading:", batch);
         return;
     }
+    
+    try {
+        const querySnapshot = await getDocs(q);
+        
+        materialsList.innerHTML = '';
+        if (querySnapshot.empty) {
+            materialsList.innerHTML = '<p class="text-gray-400 col-span-full text-center">No materials available for your batch yet.</p>';
+            return;
+        }
 
-    const materials = querySnapshot.docs.map(doc => doc.data());
-    materials.sort((a, b) => b.uploadedAt?.seconds - a.uploadedAt?.seconds);
+        const materials = querySnapshot.docs.map(doc => doc.data());
+        materials.sort((a, b) => b.uploadedAt?.seconds - a.uploadedAt?.seconds);
 
-    materialsList.innerHTML = materials.map(material => `
-        <div class="bg-gray-800 p-4 rounded-lg flex items-center justify-between gap-4">
-            <div class="flex-grow">
-                <h3 class="font-bold text-lg text-blue-300">${material.name}</h3>
-                <p class="text-sm text-gray-500">Uploaded: ${new Date(material.uploadedAt?.seconds * 1000).toLocaleDateString()}</p>
+        materialsList.innerHTML = materials.map(material => `
+            <div class="bg-gray-800 p-4 rounded-lg flex items-center justify-between gap-4">
+                <div class="flex-grow">
+                    <h3 class="font-bold text-lg text-blue-300">${material.name}</h3>
+                    <p class="text-sm text-gray-500">Uploaded: ${new Date(material.uploadedAt?.seconds * 1000).toLocaleDateString()}</p>
+                </div>
+                <a href="${material.url}" target="_blank" rel="noopener noreferrer" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition">Download</a>
             </div>
-            <a href="${material.url}" target="_blank" rel="noopener noreferrer" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition">Download</a>
-        </div>
-    `).join('');
+        `).join('');
+    } catch (error) {
+        console.error("Failed to load student materials:", error);
+        materialsList.innerHTML = '<p class="text-red-400 col-span-full text-center">Failed to load materials. Please try again later.</p>';
+    }
 }
 
 
@@ -815,6 +910,7 @@ async function initAdminDashboardLogic(db) {
     initUserManagement(db);
     initQrCodeGeneration(db);
     initSiteSettings(db);
+    initAnnouncementManagement(db);
 }
 
 // --- ADMIN: CONTENT MANAGEMENT ---
@@ -885,6 +981,94 @@ async function loadAdminMaterials(db) {
             <a href="${material.url}" target="_blank" rel="noopener noreferrer" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition">Download</a>
         </div>
     `).join('');
+}
+
+
+// --- ADMIN: ANNOUNCEMENT MANAGEMENT ---
+/**
+ * Initializes announcement management for admins.
+ * @param {object} db - The Firestore database instance.
+ */
+function initAnnouncementManagement(db) {
+    const addAnnouncementForm = document.getElementById('add-announcement-form');
+    const announcementListEl = document.getElementById('announcement-list');
+    
+    if (!addAnnouncementForm || !announcementListEl) return;
+
+    addAnnouncementForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const button = document.getElementById('add-announcement-button');
+        const statusEl = document.getElementById('add-announcement-status');
+        if (!button || !statusEl) return;
+
+        button.disabled = true;
+        statusEl.textContent = 'Publishing...';
+
+        const message = document.getElementById('announcement-message')?.value;
+        const targetBatch = document.getElementById('announcement-target-batch')?.value;
+        
+        if (!message) {
+            statusEl.textContent = 'Please enter a message.';
+            button.disabled = false;
+            return;
+        }
+
+        try {
+            await addDoc(collection(db, "announcements"), {
+                message,
+                targetBatch,
+                publishedAt: serverTimestamp()
+            });
+            statusEl.textContent = 'Announcement published!';
+            addAnnouncementForm.reset();
+        } catch (error) {
+            console.error("Failed to publish announcement:", error);
+            statusEl.textContent = 'Failed to publish announcement.';
+        } finally {
+            button.disabled = false;
+            setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+        }
+    });
+
+    // Real-time listener for announcements
+    const q = query(collection(db, "announcements"));
+    onSnapshot(q, (snapshot) => {
+        announcementListEl.innerHTML = '';
+        if (snapshot.empty) {
+            announcementListEl.innerHTML = '<p class="text-gray-400">No announcements published yet.</p>';
+            return;
+        }
+
+        const announcements = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        announcements.sort((a, b) => b.publishedAt?.seconds - a.publishedAt?.seconds);
+
+        announcements.forEach(announcement => {
+            const item = document.createElement('div');
+            item.className = 'bg-gray-800 p-3 rounded-lg flex items-start justify-between gap-4 mb-2';
+            item.innerHTML = `
+                <div class="flex-grow">
+                    <p class="text-sm text-gray-300 mb-1">${announcement.message}</p>
+                    <p class="text-xs text-gray-500">To: ${announcement.targetBatch} | Published: ${new Date(announcement.publishedAt?.seconds * 1000).toLocaleDateString()}</p>
+                </div>
+                <button data-id="${announcement.id}" class="delete-announcement-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-xs transition">Delete</button>
+            `;
+            announcementListEl.appendChild(item);
+        });
+
+        announcementListEl.querySelectorAll('.delete-announcement-btn').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                const announcementId = e.target.dataset.id;
+                const confirmed = await showConfirm('Are you sure you want to delete this announcement?');
+                if (confirmed) {
+                    try {
+                        await deleteDoc(doc(db, "announcements", announcementId));
+                    } catch (error) {
+                        showAlert('Failed to delete announcement.');
+                    }
+                }
+            });
+        });
+    });
 }
 
 
@@ -1162,7 +1346,7 @@ function initAttendanceManagement(db) {
                     batch: studentData.batch,
                     date: date,
                     status: newStatus,
-                    markedAt: markedAt,
+                    markedAt: new Date(),
                     durationInHours: durationInHours
                 };
 
@@ -1650,6 +1834,10 @@ async function initSiteSettings(db) {
 
 
 // --- QR SCANNER LOGIC ---
+/**
+ * Initializes and starts the QR code scanner.
+ * Optimized for faster startup and scanning.
+ */
 function initQrScanner() {
     const readerEl = document.getElementById('reader');
     if (!readerEl) {
@@ -1657,7 +1845,10 @@ function initQrScanner() {
         return;
     }
     const scanStatusEl = document.getElementById('scan-status');
-    const onScanSuccess = async (decodedText, decodedResult) => {
+
+    // Callback function for successful QR code scans
+    const onScanSuccess = async (decodedText) => {
+        // Pause the scanner to prevent multiple scans
         if (html5QrCodeScanner) {
             html5QrCodeScanner.pause();
         }
@@ -1670,6 +1861,7 @@ function initQrScanner() {
             const sessionRef = doc(db, 'attendance_sessions', token);
             const sessionSnap = await getDoc(sessionRef);
 
+            // Check if the session exists and is not expired
             if (!sessionSnap.exists()) {
                 throw new Error("Invalid or expired QR code.");
             }
@@ -1677,13 +1869,13 @@ function initQrScanner() {
             const sessionData = sessionSnap.data();
             const currentTime = new Date().getTime();
             if (sessionData.expiresAt.toDate().getTime() < currentTime) {
-                await deleteDoc(sessionRef);
+                await deleteDoc(sessionRef); // Clean up expired session
                 throw new Error("Attendance session has expired.");
             }
 
-            // Check if location check is enabled
+            // Location check if enabled
             const settingsDoc = await getDoc(doc(db, "settings", "config"));
-            const enableLocationCheck = settingsDoc.exists() ? settingsDoc.data().enableLocationCheck : false;
+            const enableLocationCheck = settingsDoc.exists() && settingsDoc.data().enableLocationCheck;
 
             if (enableLocationCheck) {
                 const locationDoc = await getDoc(doc(db, "settings", "location"));
@@ -1704,8 +1896,7 @@ function initQrScanner() {
                 const studentLon = position.coords.longitude;
                 const distance = calculateDistance(studentLat, studentLon, classroomLocation.latitude, classroomLocation.longitude);
                 
-                // Allow a small tolerance, e.g., 50 meters
-                const tolerance = 50;
+                const tolerance = 50; // 50 meters
                 if (distance > tolerance) {
                     throw new Error("You are not in the classroom. Please mark attendance from the correct location.");
                 }
@@ -1763,24 +1954,17 @@ function initQrScanner() {
         }
     };
 
+    // Callback for scan failures (can be ignored)
     const onScanFailure = (error) => {
-        // Can be useful for debugging
         // console.warn(`QR code scan error: ${error}`);
     };
     
-    // Start the QR scanner, but disable the 'scan file' button
+    // Start the QR scanner with a minimal configuration for speed
     try {
         html5QrCodeScanner = new Html5QrcodeScanner("reader", { 
-            fps: 15, // Increased FPS for faster scanning
-            qrbox: { width: 300, height: 300 }, // Optimized QR box size
-            aspectRatio: 1.777778, // Adjusted aspect ratio for a wider view
-            supportedScanFormats: [Html5QrcodeSupportedFormats.QR_CODE],
-            rememberLastUsedCamera: true,
-            // Use an optional config object to force the camera
-            // selection logic to choose the rear camera.
-            videoConstraints: {
-                facingMode: "environment" // Force back camera
-            }
+            fps: 30,
+            qrbox: 250,
+            videoConstraints: { facingMode: "environment" }
         }, false);
         html5QrCodeScanner.render(onScanSuccess, onScanFailure);
     } catch(error) {

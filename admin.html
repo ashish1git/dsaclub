@@ -25,7 +25,7 @@
         </div>
 
         <div id="content-section" class="tab-content">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                 <div class="main-container p-6 rounded-lg">
                     <h2 class="text-xl sm:text-2xl font-bold mb-4 text-blue-300">Add New Material</h2>
                     <form id="add-material-form">
@@ -53,10 +53,37 @@
                     <div id="manage-materials-list" class="space-y-4 h-96 overflow-y-auto pr-2"></div>
                 </div>
             </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="main-container p-6 rounded-lg">
+                    <h2 class="text-xl sm:text-2xl font-bold mb-4 text-purple-400">Publish Announcement</h2>
+                    <form id="add-announcement-form">
+                        <div class="mb-4">
+                            <label for="announcement-message" class="form-label">Announcement Message</label>
+                            <textarea id="announcement-message" class="form-input h-32" placeholder="Write your message here..." required></textarea>
+                        </div>
+                        <div class="mb-6">
+                            <label for="announcement-target-batch" class="form-label">Target Audience</label>
+                            <select id="announcement-target-batch" class="form-input" required>
+                                <option value="All">All Students</option>
+                                <option value="Basic">Basic Batch</option>
+                                <option value="Advanced">Advanced Batch</option>
+                            </select>
+                        </div>
+                        <button type="submit" id="add-announcement-button" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition">Publish Announcement</button>
+                        <p id="add-announcement-status" class="text-green-400 text-center mt-4 h-4"></p>
+                    </form>
+                </div>
+                <div class="main-container p-6 rounded-lg">
+                    <h2 class="text-xl sm:text-2xl font-bold mb-4 text-purple-400">Recent Announcements</h2>
+                    <div id="announcement-list" class="space-y-4 h-96 overflow-y-auto pr-2"></div>
+                </div>
+            </div>
+
         </div>
 
         <div id="attendance-section" class="tab-content hidden">
-             <div class="main-container p-6 rounded-lg mb-8">
+            <div class="main-container p-6 rounded-lg mb-8">
                 <h2 class="text-xl sm:text-2xl font-bold mb-4 text-blue-300">Automated Attendance</h2>
                 <!-- MODIFIED: Responsive layout for time slot inputs -->
                 <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 mb-6">
