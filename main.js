@@ -204,13 +204,16 @@ function playBeep() {
 }
 
 /**
- * Formats a date string to DD/MM/YYYY.
+ * Formats a date string to DD-MM-YYYY.
  * @param {string} dateString - The date string (e.g., "2025-08-23").
- * @returns {string} The formatted date (e.g., "23/08/2025").
+ * @returns {string} The formatted date (e.g., "23-08-2025").
  */
 function formatDateDDMMYYYY(dateString) {
-    const [year, month, day] = dateString.split('-');
-    return `${day}/${month}/${year}`;
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}-${month}-${year}`;
 }
 
 /**
@@ -479,7 +482,7 @@ function loadAnnouncements(db) {
             item.innerHTML = `
                 <div class="flex-grow">
                     <p class="text-sm text-gray-300 mb-1">${announcement.message}</p>
-                    <p class="text-xs text-gray-500">Published: ${new Date(announcement.publishedAt?.seconds * 1000).toLocaleDateString()}</p>
+                    <p class="text-xs text-gray-500">Published: ${formatDateDDMMYYYY(new Date(announcement.publishedAt?.seconds * 1000))}</p>
                 </div>
             `;
             announcementsListEl.appendChild(item);
@@ -847,7 +850,7 @@ async function loadStudentMaterials(batch, db) {
             <div class="bg-gray-800 p-4 rounded-lg flex items-center justify-between gap-4">
                 <div class="flex-grow">
                     <h3 class="font-bold text-lg text-blue-300">${material.name}</h3>
-                    <p class="text-sm text-gray-500">Uploaded: ${new Date(material.uploadedAt?.seconds * 1000).toLocaleDateString()}</p>
+                    <p class="text-sm text-gray-500">Uploaded: ${formatDateDDMMYYYY(new Date(material.uploadedAt?.seconds * 1000))}</p>
                 </div>
                 <a href="${material.url}" target="_blank" rel="noopener noreferrer" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition">Download</a>
             </div>
@@ -976,7 +979,7 @@ async function loadAdminMaterials(db) {
         <div class="bg-gray-800 p-4 rounded-lg flex items-center justify-between gap-4">
             <div class="flex-grow">
                 <h3 class="font-bold text-lg text-blue-300">${material.name}</h3>
-                <p class="text-sm text-gray-500">Uploaded: ${new Date(material.uploadedAt?.seconds * 1000).toLocaleDateString()}</p>
+                <p class="text-sm text-gray-500">Uploaded: ${formatDateDDMMYYYY(new Date(material.uploadedAt?.seconds * 1000))}</p>
             </div>
             <a href="${material.url}" target="_blank" rel="noopener noreferrer" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition">Download</a>
         </div>
@@ -1048,7 +1051,7 @@ function initAnnouncementManagement(db) {
             item.innerHTML = `
                 <div class="flex-grow">
                     <p class="text-sm text-gray-300 mb-1">${announcement.message}</p>
-                    <p class="text-xs text-gray-500">To: ${announcement.targetBatch} | Published: ${new Date(announcement.publishedAt?.seconds * 1000).toLocaleDateString()}</p>
+                    <p class="text-xs text-gray-500">To: ${announcement.targetBatch} | Published: ${formatDateDDMMYYYY(new Date(announcement.publishedAt?.seconds * 1000))}</p>
                 </div>
                 <button data-id="${announcement.id}" class="delete-announcement-btn bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-xs transition">Delete</button>
             `;
