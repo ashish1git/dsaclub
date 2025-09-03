@@ -460,8 +460,10 @@ function loadAnnouncements(db) {
     if (!announcementsListEl || !currentUserProfile) return;
 
     let q;
+    // Check if the user is a Basic batch student
     if (currentUserProfile.batch === 'Basic') {
         q = query(collection(db, "announcements"), where("targetBatch", "in", ["All", "Basic"]));
+    // If not, they are an Advanced batch student
     } else {
         q = query(collection(db, "announcements"), where("targetBatch", "in", ["All", "Advanced"]));
     }
@@ -821,14 +823,12 @@ async function loadStudentMaterials(batch, db) {
     if (!materialsList) return;
 
     let q;
-    // Basic students only see Basic materials.
+    // Only fetch content for the student's specific batch and for all batches.
     if (batch === 'Basic') {
-        q = query(collection(db, "materials"), where("targetBatch", "==", "Basic"));
-    // Advanced students see both Advanced and Basic materials.
+        q = query(collection(db, "materials"), where("targetBatch", "in", ["All", "Basic"]));
     } else if (batch === 'Advanced') {
-        q = query(collection(db, "materials"), where("targetBatch", "in", ["Advanced", "Basic"]));
+        q = query(collection(db, "materials"), where("targetBatch", "in", ["All", "Advanced"]));
     } else {
-        // Handle cases where the batch is unknown or invalid
         materialsList.innerHTML = '<p class="text-gray-400 col-span-full text-center">No materials available for your batch yet.</p>';
         console.warn("Invalid batch type for materials loading:", batch);
         return;
@@ -981,9 +981,28 @@ async function loadAdminMaterials(db) {
                 <h3 class="font-bold text-lg text-blue-300">${material.name}</h3>
                 <p class="text-sm text-gray-500">Uploaded: ${formatDateDDMMYYYY(new Date(material.uploadedAt?.seconds * 1000))}</p>
             </div>
-            <a href="${material.url}" target="_blank" rel="noopener noreferrer" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition">Download</a>
+            <div class="flex items-center gap-2">
+                <a href="${material.url}" target="_blank" rel="noopener noreferrer" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition">Download</a>
+                <button data-id="${material.id}" class="delete-material-btn bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition">Delete</button>
+            </div>
         </div>
     `).join('');
+
+    materialsList.querySelectorAll('.delete-material-btn').forEach(button => {
+        button.addEventListener('click', async (e) => {
+            const materialId = e.target.dataset.id;
+            const confirmed = await showConfirm('Are you sure you want to permanently delete this material?');
+            if (confirmed) {
+                try {
+                    await deleteDoc(doc(db, "materials", materialId));
+                    showAlert('Material deleted successfully!');
+                    loadAdminMaterials(db);
+                } catch (error) {
+                    showAlert('Failed to delete material.');
+                }
+            }
+        });
+    });
 }
 
 
